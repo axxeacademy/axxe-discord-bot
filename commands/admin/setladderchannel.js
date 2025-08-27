@@ -1,6 +1,8 @@
 // commands/admin/setladderchannel.js
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('../../utils/db'); // <- pooled connection from utils/db.js
+const { MessageFlags } = require('discord.js'); 
+
 
 module.exports = {
   data: new SlashCommandBuilder()

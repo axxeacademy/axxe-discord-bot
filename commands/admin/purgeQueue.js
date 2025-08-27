@@ -3,6 +3,8 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { clearQueue } = require('../../services/queueService');
 const { logCommand } = require('../../utils/logger');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
+const { MessageFlags } = require('discord.js'); // or import { MessageFlags } from 'discord.js'
+
 
 module.exports = {
   data: new SlashCommandBuilder()

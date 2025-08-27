@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const db = require('../../utils/db'); // <-- pooled mysql2/promise pool
 const { notifyLadderAdminsDisputeResolved } = require('../../utils/notifyAdmins');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
+const { MessageFlags } = require('discord.js'); 
 
 module.exports = {
   data: new SlashCommandBuilder()

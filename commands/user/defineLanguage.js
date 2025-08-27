@@ -1,7 +1,6 @@
 // commands/user/definelanguage.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // pooled mysql2/promise
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

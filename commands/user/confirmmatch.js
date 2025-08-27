@@ -1,5 +1,5 @@
 // commands/matches/confirmmatch.js
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder, MessageFlags } = require('@discordjs/builders');
 const db = require('../../utils/db'); // pooled MySQL
 const { logCommand } = require('../../utils/logger');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
@@ -7,7 +7,6 @@ const matchService = require('../../services/matchService');
 const { confirmationTimers } = require('../user/reportmatch');
 const languageService = require('../../services/languageService');
 const { getGamertagByDiscordId, isAdminByDiscordId } = require('../../services/userService');
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

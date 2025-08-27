@@ -1,9 +1,7 @@
 // index.js
 require('dotenv').config();
 const config = require('./config');
-const { MessageFlags } = require('discord.js'); // or import { MessageFlags } from 'discord.js'
-
-const { Client, GatewayIntentBits, Partials, Collection, Events } = require('discord.js');
+const { Client, MessageFlags, GatewayIntentBits, Partials, Collection, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 

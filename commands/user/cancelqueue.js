@@ -1,9 +1,8 @@
 // commands/player/cancelqueue.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // ← uses pooled mysql2/promise instance
 const { logCommand } = require('../../utils/logger');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

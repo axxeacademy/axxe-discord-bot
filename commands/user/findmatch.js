@@ -1,12 +1,11 @@
 // commands/user/findmatch.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // pooled mysql2/promise
 const { logCommand } = require('../../utils/logger');
 const { addToQueue, getNextOpponent, removeFromQueue } = require('../../services/queueService');
 const { createMatch, createMatchThread } = require('../../services/matchService');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const languageService = require('../../services/languageService');
-const { MessageFlags } = require('discord.js');
 
 async function logPlayerPairing(interaction, player1, player2, thread) {
   await logCommand(interaction, `Players paired:`, {

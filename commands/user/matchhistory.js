@@ -1,9 +1,8 @@
 // commands/user/matchhistory.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const dayjs = require('dayjs');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const { execute } = require('../../utils/db');
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

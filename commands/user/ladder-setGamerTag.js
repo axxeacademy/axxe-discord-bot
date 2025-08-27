@@ -2,7 +2,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db');
 const languageService = require('../../services/languageService');
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

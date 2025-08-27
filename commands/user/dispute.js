@@ -1,5 +1,5 @@
 // commands/user/dispute.js
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder, MessageFlags } = require('@discordjs/builders');
 const db = require('../../utils/db'); // <- pooled mysql2/promise pool
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const { confirmationTimers } = require('./reportmatch');
@@ -7,7 +7,6 @@ const languageService = require('../../services/languageService');
 const { notifyLadderAdminsDisputeOpened } = require('../../utils/notifyAdmins');
 const { logCommand } = require('../../utils/logger');
 const { buildMatchEmbed } = require('../../services/matchMessages');
-const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

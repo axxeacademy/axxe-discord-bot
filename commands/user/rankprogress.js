@@ -1,12 +1,11 @@
 // commands/player/rankprogress.js
-const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, AttachmentBuilder } = require('discord.js');
 const { execute } = require('../../utils/db'); // ✅ use pooled helpers
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const dayjs = require('dayjs');
 const utc = require('dayjs/plugin/utc');
 const tz = require('dayjs/plugin/timezone');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
-const { MessageFlags } = require('discord.js');
 
 dayjs.extend(utc);
 dayjs.extend(tz);

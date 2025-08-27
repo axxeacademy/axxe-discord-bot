@@ -1,11 +1,11 @@
-// commands/user/ladder-setGamerTag.js
+// commands/user/setGamerTag.js
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db');
 const languageService = require('../../services/languageService');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('ladder-setgamertag')
+    .setName('setgamertag')
     .setDescription('Defina o seu gamertag para poder entrar nas filas.')
     .addStringOption(option =>
       option
@@ -53,7 +53,7 @@ module.exports = {
         content: '✅ Gamertag definido com sucesso.',
       });
     } catch (error) {
-      console.error('❌ DB Error in /ladder-setGamerTag:', error);
+      console.error('❌ DB Error in /setGamerTag:', error);
       try {
         return interaction.editReply({
           content: '❌ Erro ao definir o gamertag.',

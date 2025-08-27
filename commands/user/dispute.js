@@ -1,5 +1,6 @@
 // commands/user/dispute.js
-const { SlashCommandBuilder, MessageFlags } = require('@discordjs/builders');
+const { SlashCommandBuilder } = require('@discordjs/builders');
+const { MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // <- pooled mysql2/promise pool
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const { confirmationTimers } = require('./reportmatch');

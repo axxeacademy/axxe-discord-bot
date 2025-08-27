@@ -1,5 +1,6 @@
 // commands/user/reportmatch.js
-const { SlashCommandBuilder, MessageFlags } = require('@discordjs/builders');
+const { SlashCommandBuilder } = require('@discordjs/builders');
+const { MessageFlags } = require('discord.js');
 const { EmbedBuilder } = require('discord.js');
 const { execute } = require('../../utils/db'); // ✅ pooled db helpers
 const { logCommand } = require('../../utils/logger');

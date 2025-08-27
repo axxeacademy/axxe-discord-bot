@@ -26,7 +26,7 @@ module.exports = {
     if (!thread?.isThread?.()) {
       return interaction.reply({
         content: languageService.getMessage('pt-PT', 'command_not_in_thread'),
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -36,7 +36,7 @@ module.exports = {
     if (!ladderId) {
       return interaction.reply({
         content: languageService.getMessage('pt-PT', 'command_not_in_channel'),
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -47,11 +47,11 @@ module.exports = {
       return interaction.reply({
         content:
           '❌ Não consegui identificar o ID do jogo a partir do título da thread.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const reason = interaction.options.getString('reason', true);
     const evidence = interaction.options.getString('evidence') || null;

@@ -14,11 +14,11 @@ module.exports = {
     if (!ladderId) {
       return interaction.reply({
         content: '❌ Este comando não pode ser usado neste canal.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const discordId = interaction.user.id;
 
     try {

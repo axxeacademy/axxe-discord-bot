@@ -30,13 +30,13 @@ module.exports = {
     try {
       const ladderId = await getLadderIdByChannel(interaction.channelId);
       if (!ladderId) {
-        return interaction.reply({ content: '❌ Este comando não pode ser usado neste canal.', ephemeral: true });
+        return interaction.reply({ content: '❌ Este comando não pode ser usado neste canal.', flags: MessageFlags.Ephemeral });
       }
 
       const days = interaction.options.getInteger('days') ?? 15;
       const timezone = 'Europe/Lisbon'; // if you later store this on ladders, fetch it
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const discordId = interaction.user.id;
 
@@ -153,7 +153,7 @@ module.exports = {
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply('❌ Ocorreu um erro a gerar o gráfico.');
       }
-      return interaction.reply({ content: '❌ Ocorreu um erro a gerar o gráfico.', ephemeral: true });
+      return interaction.reply({ content: '❌ Ocorreu um erro a gerar o gráfico.', flags: MessageFlags.Ephemeral });
     }
   },
 };

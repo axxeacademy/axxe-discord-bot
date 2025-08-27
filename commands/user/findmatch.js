@@ -29,7 +29,7 @@ module.exports = {
     .setDescription('Entrar na fila de matchmaking para encontrar um adversário.'),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const discordId = interaction.user.id;
     const username = interaction.user.tag;
@@ -267,7 +267,7 @@ module.exports = {
         } else {
           await interaction.reply({
             content: '❌ Ocorreu um erro ao tentar encontrar um adversário.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
       } catch (err) {

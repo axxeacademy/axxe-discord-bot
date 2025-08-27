@@ -24,7 +24,7 @@ module.exports = {
 
 
     // Always defer reply at the start
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (!thread?.isThread?.()) {
       return interaction.editReply({
@@ -163,7 +163,7 @@ module.exports = {
         if (interaction.deferred || interaction.replied) {
           await interaction.followUp({
             content: '❌ Erro ao resolver disputa.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         } else {
           await interaction.editReply({

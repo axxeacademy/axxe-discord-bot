@@ -15,7 +15,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     }
 
     const ladderId = await getLadderIdByChannel(interaction.channelId);
@@ -37,7 +37,7 @@ module.exports = {
       if (playerRows.length === 0) {
         return interaction.editReply({
           content: '❌ Não está registado na ladder.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
       const playerId = playerRows[0].id;
@@ -100,7 +100,7 @@ module.exports = {
 
       await interaction.editReply({
         content: `Jogo de teste criado: ${thread}`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
 
       await logCommand(

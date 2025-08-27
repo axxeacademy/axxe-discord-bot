@@ -34,7 +34,7 @@ module.exports = {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         content: '❌ Não tem permissão para usar este comando.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -44,7 +44,7 @@ module.exports = {
     if (!channelId) {
       return interaction.reply({
         content: '❌ Não foi possível identificar este canal.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -82,7 +82,7 @@ module.exports = {
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply({ content: msg });
       }
-      return interaction.reply({ content: msg, ephemeral: true });
+      return interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
     }
   }
 };

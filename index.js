@@ -83,7 +83,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // Already replied or deferred, cannot send another reply
         console.warn('Interaction already replied or deferred, cannot send error reply.');
       } else if (interaction.isRepliable && interaction.isRepliable()) {
-        await interaction.reply({ content: '❌ Error running this command.', ephemeral: true });
+        await interaction.reply({ content: '❌ Error running this command.', flags: MessageFlags.Ephemeral });
       } else {
         // Not repliable, cannot send reply
         console.warn('Interaction is not repliable, cannot send error reply.');

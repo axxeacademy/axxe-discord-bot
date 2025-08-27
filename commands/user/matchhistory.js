@@ -19,11 +19,11 @@ module.exports = {
     if (!ladderId) {
       return interaction.reply({
         content: '❌ This command cannot be used in this channel.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const user = interaction.user;
     const requested = interaction.options.getInteger('num-jogos') || 5;
     const safeCount = Math.max(1, Math.min(20, Number(requested) || 5)); // clamp 1–20

@@ -13,7 +13,7 @@ module.exports = {
     if (!ladderId) {
       return interaction.reply({
         content: '❌ Este comando não pode ser usado neste canal.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -28,7 +28,7 @@ module.exports = {
       if (playerRows.length === 0) {
         return interaction.reply({
           content: '❌ Não está registado na ladder.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
@@ -40,7 +40,7 @@ module.exports = {
       if (queueRows.length === 0) {
         return interaction.reply({
           content: '❌ Não está na fila de matchmaking.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
@@ -61,13 +61,13 @@ module.exports = {
         content:
           `📊 Entrou na fila há **${minutes}m ${seconds}s**.\n` +
           `👥 Atualmente há **${totalInQueue}** jogadores na fila.`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     } catch (error) {
       console.error('❌ Error in /status:', error);
       await interaction.reply({
         content: '❌ Erro ao obter o estado da fila.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
   }

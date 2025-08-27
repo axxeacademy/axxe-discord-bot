@@ -25,7 +25,7 @@ module.exports = {
     const userId = interaction.user.id;
 
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const [res] = await db.execute(
         'UPDATE users SET language = ? WHERE discord_id = ?',

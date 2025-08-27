@@ -32,12 +32,12 @@ module.exports = {
       if (!ladderId) {
         await interaction.reply({
           content: '❌ Este comando não pode ser usado neste canal.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       // Validate & sanitize "topX"
       const rawTop = interaction.options.getString('topx-players') || '10';
@@ -112,7 +112,7 @@ module.exports = {
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply('❌ Falha ao carregar a classificação.');
         } else {
-          await interaction.reply({ content: '❌ Falha ao carregar a classificação.', ephemeral: true });
+          await interaction.reply({ content: '❌ Falha ao carregar a classificação.', flags: MessageFlags.Ephemeral });
         }
       } catch {
         // swallow

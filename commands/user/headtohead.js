@@ -19,7 +19,7 @@ module.exports = {
     if (!ladderId) {
       return interaction.reply({
         content: '❌ This command cannot be used in this channel.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -29,17 +29,17 @@ module.exports = {
     if (!opponentUser) {
       return interaction.reply({
         content: '❌ You must specify an opponent user.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     if (opponentUser.id === me.id) {
       return interaction.reply({
         content: '❌ You cannot check head-to-head against yourself.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       // Resolve both users to internal player IDs

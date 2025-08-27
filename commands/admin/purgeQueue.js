@@ -15,7 +15,7 @@ module.exports = {
     if (!ladderId) {
       return await interaction.reply({
         content: '❌ Este comando não pode ser usado neste canal.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -25,17 +25,17 @@ module.exports = {
       if (interaction.replied) {
         await interaction.followUp({
           content: '🧹 A fila de matchmaking foi limpa. Todos os jogadores removidos.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else if (interaction.deferred) {
         await interaction.editReply({
           content: '🧹 A fila de matchmaking foi limpa. Todos os jogadores removidos.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else {
         await interaction.reply({
           content: '🧹 A fila de matchmaking foi limpa. Todos os jogadores removidos.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
 
@@ -46,17 +46,17 @@ module.exports = {
       if (interaction.replied) {
         await interaction.followUp({
           content: '❌ Falha ao limpar a fila.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else if (interaction.deferred) {
         await interaction.editReply({
           content: '❌ Falha ao limpar a fila.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else {
         await interaction.reply({
           content: '❌ Falha ao limpar a fila.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }

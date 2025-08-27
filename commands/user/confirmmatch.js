@@ -19,7 +19,7 @@ module.exports = {
     // Always defer so the token is safe even if DB is slow
     let deferred = false;
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       deferred = true;
     } catch (e) {
       console.error('Failed to defer reply in /confirmmatch:', e);

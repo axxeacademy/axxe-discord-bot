@@ -7,6 +7,7 @@ const matchService = require('../../services/matchService');
 const { confirmationTimers } = require('../user/reportmatch');
 const languageService = require('../../services/languageService');
 const { getGamertagByDiscordId, isAdminByDiscordId } = require('../../services/userService');
+const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

@@ -7,6 +7,7 @@ const languageService = require('../../services/languageService');
 const { notifyLadderAdminsDisputeOpened } = require('../../utils/notifyAdmins');
 const { logCommand } = require('../../utils/logger');
 const { buildMatchEmbed } = require('../../services/matchMessages');
+const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

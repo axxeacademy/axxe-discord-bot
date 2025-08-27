@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const dayjs = require('dayjs');
 const { execute } = require('../../utils/db'); // <-- use pooled db helpers
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
+const { MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()

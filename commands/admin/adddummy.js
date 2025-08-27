@@ -6,7 +6,7 @@ const { logCommand } = require('../../utils/logger');
 const { createMatch, createMatchThread } = require('../../services/matchService');
 const { removeFromQueue } = require('../../services/queueService');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
-const { MessageFlags } = require('discord.js'); // or import { MessageFlags } from 'discord.js'
+const { MessageFlags } = require('discord.js');
 
 
 module.exports = {

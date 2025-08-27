@@ -1,5 +1,6 @@
 // commands/matches/confirmmatch.js
 const { SlashCommandBuilder, MessageFlags } = require('@discordjs/builders');
+const { MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // pooled MySQL
 const { logCommand } = require('../../utils/logger');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');

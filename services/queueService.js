@@ -4,7 +4,7 @@ const { execute } = require('../utils/db');
 async function addToQueue(playerId, discordId, ladderId) {
   if (ladderId === undefined) throw new Error('ladderId is required');
   await execute(
-    'INSERT INTO ladder_match_queue (player_id, discord_id, ladder_id, looking_since) VALUES (?, ?, ?, NOW())',
+    'INSERT INTO ladder_match_queue (player_id, discord_id, ladder_id, looking_since) VALUES (?, ?, ?, UTC_TIMESTAMP())',
     [playerId, discordId, ladderId]
   );
 }
@@ -75,7 +75,7 @@ async function getNextOpponent(discordId, playerElo, ladderId) {
          ON q.player_id = ps.player_id AND q.ladder_id = ps.ladder_id
        WHERE q.discord_id != ? 
          AND q.ladder_id = ? 
-         AND TIMESTAMPDIFF(MINUTE, q.looking_since, NOW()) >= 5
+         AND TIMESTAMPDIFF(MINUTE, q.looking_since, UTC_TIMESTAMP()) >= 5
        ORDER BY q.looking_since ASC
        LIMIT 1`,
       [discordId, ladderId]

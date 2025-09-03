@@ -16,20 +16,22 @@ module.exports = {
 
   async execute(interaction) {
     // Handle autocomplete first
-    if (interaction.isAutocomplete()) {
-      const focusedValue = interaction.options.getFocused() || '';
-      try {
-        const [rows] = await db.execute(
-          // safe LIKE search; lets MySQL use the index on name when possible
-          'SELECT name FROM ladders WHERE name LIKE CONCAT("%", ?, "%") LIMIT 25',
-          [focusedValue]
-        );
-        return interaction.respond(rows.map(r => ({ name: r.name, value: r.name })));
-      } catch (err) {
-        console.error('❌ Autocomplete ladders error:', err);
-        return interaction.respond([]);
-      }
-    }
+if (interaction.isAutocomplete()) {
+  const focusedValue = interaction.options.getFocused() || '';
+  console.log(`[DEBUG] Autocomplete triggered for ladder_name. Focused value: "${focusedValue}"`);
+  try {
+    const [rows] = await db.execute(
+      // safe LIKE search; lets MySQL use the index on name when possible
+      'SELECT name FROM ladders WHERE name LIKE CONCAT("%", ?, "%") LIMIT 25',
+      [focusedValue]
+    );
+    console.log(`[DEBUG] Autocomplete DB returned ${rows.length} ladders:`, rows.map(r => r.name));
+    return interaction.respond(rows.map(r => ({ name: r.name, value: r.name })));
+  } catch (err) {
+    console.error('❌ Autocomplete ladders error:', err);
+    return interaction.respond([]);
+  }
+}
 
     // Permission check (Discord.js v14)
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
@@ -50,7 +52,7 @@ module.exports = {
     }
 
     try {
-      await interaction.deferReply({ ephemeral: false });
+      await interaction.deferReply();
 
       // Find ladder_id by ladder name
       const [ladderRows] = await db.execute(
@@ -81,7 +83,7 @@ module.exports = {
       console.error('❌ Erro ao associar o canal à ladder:', err);
       const msg = err?.code ? `❌ Falha: ${err.code}` : '❌ Falha ao associar o canal à ladder.';
       if (interaction.deferred || interaction.replied) {
-        return interaction.editReply({ content: msg });
+        return interaction.editReply({ content: msg, flags: MessageFlags.Ephemeral });
       }
       return interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
     }

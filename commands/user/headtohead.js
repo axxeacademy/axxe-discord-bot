@@ -22,6 +22,18 @@ module.exports = {
         flags: MessageFlags.Ephemeral,
       });
     }
+    // Fetch ladder name
+    let ladderName = null;
+    try {
+      const [[ladderRow]] = await db.execute('SELECT name FROM ladders WHERE id = ?', [ladderId]);
+      ladderName = ladderRow?.name || null;
+    } catch (e) {
+      console.error('Error fetching ladder name:', e);
+      ladderName = null;
+    }
+    if (!ladderName) {
+      ladderName = `ID ${ladderId}`;
+    }
 
     const me = interaction.user;
     const opponentUser = interaction.options.getUser('opponent');
@@ -209,7 +221,7 @@ module.exports = {
       }
 
       const reply =
-        `📊 Registo Head-to-Head contra ${opponentUser.username} (Ladder ${ladderId}):\n\n` +
+        `📊 Registo Head-to-Head contra ${opponentUser.username} - ${ladderName}:\n\n` +
         `🎮 **Jogos:** ${totalMatches} | ✅ **Vitórias:** ${wins} | ❌ **Derrotas:** ${losses}\n\n` +
         `**Percentagem de Vitórias:** ${winPercentage}%\n\n` +
         `**Golos Marcados:** ${goalsScored}\n` +

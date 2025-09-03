@@ -22,6 +22,13 @@ module.exports = {
     const user = interaction.user;
 
     try {
+      // Get ladder name
+      const [[ladderRow]] = await execute(
+        'SELECT name FROM ladders WHERE id = ?',
+        [ladderId]
+      );
+      const ladderName = ladderRow ? ladderRow.name : 'Ladder';
+
       // Get player ID
       const [[playerRow]] = await execute(
         'SELECT id FROM users WHERE discord_id = ?',
@@ -138,17 +145,20 @@ module.exports = {
       const totalGames = wins + losses;
       const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : '0.0';
 
+      // Convert lastResults to emoji format
+      const lastResultsEmoji = lastResults.replace(/W/g, '✅').replace(/L/g, '❌');
+
       // Calculate additional per-game stats using recalculated totalGames
       const goalsScoredPerGame = totalGames > 0 ? (stats.goals_scored / totalGames).toFixed(2) : '0.00';
       const goalsConcededPerGame = totalGames > 0 ? (stats.goals_conceded / totalGames).toFixed(2) : '0.00';
       const avgGoalMargin = totalGames > 0 ? (stats.goal_diff / totalGames).toFixed(2) : '0.00';
 
       const reply = `
-## 📊 Estatísticas da Ladder de ${user.gamertag || user.username}
+## 📊 Estatísticas da Ladder ${ladderName} de ${user.gamertag || user.username}
 
 🏅 **Rank #**${rank} | **Elo** ${stats.elo_rating}
 
-⏮️ **Últimos Resultados:** ${lastResults}
+⏮️ **Últimos Resultados:** ${lastResultsEmoji}
 🎮 **Jogos:** ${totalGames} | ✅ **Vitórias:** ${wins} | ❌ **Derrotas:** ${losses}
 📈 **Taxa de Vitória:** ${winRate}%
 🔥 **Winstreak:** ${stats.winstreak || stats.win_streak || 0}

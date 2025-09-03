@@ -170,13 +170,41 @@ module.exports = {
         const p1Name = match.player1_id === playerId ? (playerGamertag || me.username) : (opponentGamertag || opponentUser.username);
         const p2Name = match.player2_id === playerId ? (playerGamertag || me.username) : (opponentGamertag || opponentUser.username);
 
+        // Determine result for playerId
+        let icon = '';
         if (match.player1_score === match.player2_score) {
-          // include pens if present
+          // Penalty logic for draws
           const pen1 = match.penalty_score1 ?? '-';
           const pen2 = match.penalty_score2 ?? '-';
-          lastFiveGamesStr += `${p1Name} ${match.player1_score} (${pen1}) - (${pen2}) ${match.player2_score} ${p2Name}\n`;
+          if (match.penalty_score1 != null && match.penalty_score2 != null && match.penalty_score1 !== match.penalty_score2) {
+            if (
+              (match.player1_id === playerId && match.penalty_score1 > match.penalty_score2) ||
+              (match.player2_id === playerId && match.penalty_score2 > match.penalty_score1)
+            ) {
+              icon = '✅';
+            } else {
+              icon = '❌';
+            }
+          } else {
+            icon = '➖';
+          }
+          lastFiveGamesStr += `${icon} ${p1Name} ${match.player1_score} (${pen1}) - (${pen2}) ${match.player2_score} ${p2Name}\n`;
         } else {
-          lastFiveGamesStr += `${p1Name} ${match.player1_score} - ${match.player2_score} ${p2Name}\n`;
+          // Regular win/loss
+          let playerScore, oppScore;
+          if (match.player1_id === playerId) {
+            playerScore = match.player1_score;
+            oppScore = match.player2_score;
+          } else {
+            playerScore = match.player2_score;
+            oppScore = match.player1_score;
+          }
+          if (playerScore > oppScore) {
+            icon = '✅';
+          } else {
+            icon = '❌';
+          }
+          lastFiveGamesStr += `${icon} ${p1Name} ${match.player1_score} - ${match.player2_score} ${p2Name}\n`;
         }
       }
 

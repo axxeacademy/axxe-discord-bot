@@ -154,11 +154,12 @@ module.exports = {
       const avgGoalMargin = totalGames > 0 ? (stats.goal_diff / totalGames).toFixed(2) : '0.00';
 
       const reply = `
-## 📊 Estatísticas da Ladder ${ladderName} de ${user.gamertag || user.username}
+## 📊 Estatísticas da ${ladderName} de ${user.gamertag || user.username}
 
 🏅 **Rank #**${rank} | **Elo** ${stats.elo_rating}
 
 ⏮️ **Últimos Resultados:** ${lastResultsEmoji}
+
 🎮 **Jogos:** ${totalGames} | ✅ **Vitórias:** ${wins} | ❌ **Derrotas:** ${losses}
 📈 **Taxa de Vitória:** ${winRate}%
 🔥 **Winstreak:** ${stats.winstreak || stats.win_streak || 0}

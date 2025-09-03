@@ -6,6 +6,11 @@ const { addToQueue, getNextOpponent, removeFromQueue } = require('../../services
 const { createMatch, createMatchThread } = require('../../services/matchService');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const languageService = require('../../services/languageService');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 async function logPlayerPairing(interaction, player1, player2, thread) {
   await logCommand(interaction, `Players paired:`, {
@@ -43,6 +48,29 @@ module.exports = {
     }
 
     try {
+      // Fetch allowed_start_time, allowed_end_time, timezone for this ladder
+      const [ladderRows] = await db.execute(
+        'SELECT allowed_start_time, allowed_end_time, timezone FROM ladders WHERE id = ?',
+        [ladderId]
+      );
+      if (ladderRows.length > 0) {
+        const { allowed_start_time, allowed_end_time, timezone: ladderTz } = ladderRows[0];
+        if (allowed_start_time && allowed_end_time && ladderTz) {
+          // Get current time in ladder's timezone
+          const now = dayjs().tz(ladderTz);
+          // Parse allowed times as today in ladder's timezone
+          const today = now.format('YYYY-MM-DD');
+          const start = dayjs.tz(`${today} ${allowed_start_time}`, 'YYYY-MM-DD HH:mm:ss', ladderTz);
+          const end = dayjs.tz(`${today} ${allowed_end_time}`, 'YYYY-MM-DD HH:mm:ss', ladderTz);
+
+          if (now.isBefore(start) || now.isAfter(end)) {
+            return interaction.editReply({
+              content: `❌ Não é possível entrar na fila neste momento. Horário permitido: ${allowed_start_time} - ${allowed_end_time} (${ladderTz})`,
+            });
+          }
+        }
+      }
+
       // Check if user is in ANY queue (across all ladders)
       const [anyQueueRows] = await db.execute(
         'SELECT * FROM ladder_match_queue WHERE discord_id = ?',

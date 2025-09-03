@@ -22,9 +22,9 @@ module.exports = {
     const user = interaction.user;
 
     try {
-      // Get player ID
+      // Get player ID and gamertag
       const [[playerRow]] = await execute(
-        'SELECT id FROM users WHERE discord_id = ?',
+        'SELECT id, gamertag FROM users WHERE discord_id = ?',
         [user.id]
       );
 
@@ -33,6 +33,7 @@ module.exports = {
       }
 
       const playerId = playerRow.id;
+      const playerGamertag = playerRow.gamertag || 'Undefined';
 
       // Current ELO & Peak ELO (scoped to ladder)
       const [[eloStats]] = await execute(
@@ -365,7 +366,12 @@ module.exports = {
         [playerId, playerId, playerId, ladderId, playerId, playerId]
       );
 
-      let reply = `## 📊 Estatísticas Completas da Ladder de ${user.gamertag}\n\n`;
+      // Fetch ladder name
+      const ladderNameSql = 'SELECT name FROM ladders WHERE id = ?';
+      const [ladderRows] = await execute(ladderNameSql, [ladderId]);
+      const ladderName = ladderRows && ladderRows[0] ? ladderRows[0].name : 'Ladder';
+
+      let reply = `## 📊 Estatísticas Completas da ${ladderName} de ${playerGamertag}\n\n`;
 
       reply += `🏅 **ELO Atual:** ${eloStats?.current_elo ?? 'N/A'} | **Peak ELO:** ${eloStats?.peak_elo ?? 'N/A'}\n\n`;
 

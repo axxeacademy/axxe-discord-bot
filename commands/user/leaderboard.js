@@ -79,6 +79,11 @@ module.exports = {
         LIMIT ${topX}
       `;
 
+      // Fetch ladder name
+      const ladderNameSql = 'SELECT name FROM ladders WHERE id = ?';
+      const [ladderRows] = await execute(ladderNameSql, [ladderId]);
+      const ladderName = ladderRows && ladderRows[0] ? ladderRows[0].name : 'Ladder';
+
       // Only one placeholder: ladder_id
       const [rows] = await execute(sql, [ladderId]);
 
@@ -91,7 +96,7 @@ module.exports = {
       const pct = (wins, played) =>
         played > 0 ? ((wins / played) * 100).toFixed(Number.isInteger((wins / played) * 100) ? 0 : 2) : '0';
 
-      let text = `## 🏆 Classificação da Ladder - Top ${topX}\n`;
+      let text = `## 🏆 Classificação da ${ladderName} - Top ${topX}\n`;
 
       rows.forEach((p, idx) => {
         const fire = p.win_streak > 3 ? ' 🔥' : '';

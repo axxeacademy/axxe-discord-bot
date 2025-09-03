@@ -38,6 +38,13 @@ module.exports = {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+      // Fetch ladder name for title
+      const [[ladderRow]] = await execute(
+        'SELECT name FROM ladders WHERE id = ?',
+        [ladderId]
+      );
+      const ladderName = ladderRow ? ladderRow.name : 'Ladder';
+
       const discordId = interaction.user.id;
 
       // 1) get player id from users
@@ -144,8 +151,13 @@ module.exports = {
       const delta = last - first;
       const arrow = delta > 0 ? '📈' : delta < 0 ? '📉' : '➖';
 
+      // Build title with number of games, ladder name, and user
+      const userTitle = interaction.user.gamertag || interaction.user.username;
+      const numGames = rows.length;
+      const title = `## 📈 Progresso de Elo nos últimos ${numGames} dias na ${ladderName} de ${userTitle}`;
+
       await interaction.editReply({
-        content: `${arrow} **Elo** ${first} → ${last} (${delta >= 0 ? '+' : ''}${delta}) • Últimos **${days}** dias`,
+        content: `${title}\n\n${arrow} **Elo** ${first} → ${last} (${delta >= 0 ? '+' : ''}${delta}) • Últimos **${days}** dias`,
         files: [attachment],
       });
     } catch (err) {

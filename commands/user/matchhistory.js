@@ -18,7 +18,7 @@ module.exports = {
     const ladderId = await getLadderIdByChannel(interaction.channelId);
     if (!ladderId) {
       return interaction.reply({
-        content: '❌ This command cannot be used in this channel.',
+        content: '❌ Este comando não pode ser usado neste canal.',
         flags: MessageFlags.Ephemeral
       });
     }
@@ -29,15 +29,23 @@ module.exports = {
     const safeCount = Math.max(1, Math.min(20, Number(requested) || 5)); // clamp 1–20
 
     try {
-      // Player ID
+      // Get ladder name
+      const [[ladderRow]] = await execute(
+        'SELECT name FROM ladders WHERE id = ?',
+        [ladderId]
+      );
+      const ladderName = ladderRow ? ladderRow.name : 'Ladder';
+
+      // Player ID and gamertag
       const [[playerRow]] = await execute(
-        'SELECT id FROM users WHERE discord_id = ?',
+        'SELECT id, gamertag FROM users WHERE discord_id = ?',
         [user.id]
       );
       if (!playerRow) {
-        return interaction.editReply('❌ You are not registered in the ladder.');
+        return interaction.editReply('❌ Não está registado na ladder.');
       }
       const playerId = playerRow.id;
+      const gamertag = playerRow.gamertag;
 
       // Fetch last confirmed matches and join the latest elo delta for THIS player & ladder
       const sql = `
@@ -75,10 +83,10 @@ module.exports = {
       const [rows] = await execute(sql, params);
 
       if (rows.length === 0) {
-        return interaction.editReply('ℹ️ No matches found.');
+        return interaction.editReply('ℹ️ Ainda não tem jogos registados.');
       }
 
-      let reply = `## Last ${rows.length} matches for ${user.username}:\n\n`;
+      let reply = `## 📊 Últimos ${rows.length} jogos na ${ladderName} de ${gamertag || user.username}\n\n`;
 
       for (const match of rows) {
         const isP1 = match.player1_id === playerId;
@@ -115,7 +123,7 @@ module.exports = {
       await interaction.editReply({ content: reply });
     } catch (err) {
       console.error('❌ Error in /matchhistory:', err);
-      await interaction.editReply('❌ Failed to retrieve match history.');
+      await interaction.editReply('❌ Falha ao obter o histórico de jogos.');
     }
   }
 };

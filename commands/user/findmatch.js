@@ -58,14 +58,13 @@ module.exports = {
         if (allowed_start_time && allowed_end_time && ladderTz) {
           // Get current time in ladder's timezone
           const now = dayjs().tz(ladderTz);
-          // Parse allowed times as today in ladder's timezone
-          const today = now.format('YYYY-MM-DD');
-          const start = dayjs.tz(`${today} ${allowed_start_time}`, 'YYYY-MM-DD HH:mm:ss', ladderTz);
-          const end = dayjs.tz(`${today} ${allowed_end_time}`, 'YYYY-MM-DD HH:mm:ss', ladderTz);
+          // Parse allowed_start_time and allowed_end_time as DATETIME in ladder's timezone
+          const start = dayjs.tz(allowed_start_time, ladderTz);
+          const end = dayjs.tz(allowed_end_time, ladderTz);
 
           if (now.isBefore(start) || now.isAfter(end)) {
             return interaction.editReply({
-              content: `❌ Não é possível entrar na fila neste momento. Horário permitido: ${allowed_start_time} - ${allowed_end_time} (${ladderTz})`,
+              content: `❌ Não é possível entrar na fila neste momento. Horário permitido: ${start.format('YYYY-MM-DD HH:mm')} - ${end.format('YYYY-MM-DD HH:mm')} (${ladderTz})`,
             });
           }
         }

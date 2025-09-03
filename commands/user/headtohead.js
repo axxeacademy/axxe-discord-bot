@@ -221,7 +221,7 @@ module.exports = {
       }
 
       const reply =
-        `📊 Registo Head-to-Head contra ${opponentUser.username} - ${ladderName}:\n\n` +
+        `##📊 Registo Head-to-Head contra ${opponentUser.username} - ${ladderName}:\n\n` +
         `🎮 **Jogos:** ${totalMatches} | ✅ **Vitórias:** ${wins} | ❌ **Derrotas:** ${losses}\n\n` +
         `**Percentagem de Vitórias:** ${winPercentage}%\n\n` +
         `**Golos Marcados:** ${goalsScored}\n` +

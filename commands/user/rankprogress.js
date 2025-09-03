@@ -154,10 +154,10 @@ module.exports = {
       // Build title with number of games, ladder name, and user
       const userTitle = interaction.user.gamertag || interaction.user.username;
       const numGames = rows.length;
-      const title = `## 📈 Progresso de Elo nos últimos ${numGames} dias na ${ladderName} de ${userTitle}`;
+      const title = `## 📈 Progresso de Elo nos últimos ${days} dias na ${ladderName} de ${userTitle}`;
 
       await interaction.editReply({
-        content: `${title}\n\n${arrow} **Elo** ${first} → ${last} (${delta >= 0 ? '+' : ''}${delta}) • Últimos **${days}** dias`,
+        content: `${title}\n\n${arrow} **Elo** ${first} → ${last} (${delta >= 0 ? '+' : ''}${delta}) • Últimos **${days}** dias | Número de Jogos Realizados: ${numGames}`,
         files: [attachment],
       });
     } catch (err) {

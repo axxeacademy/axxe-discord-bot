@@ -60,10 +60,10 @@ function calculateEloAdvanced({
     }
   }
 
-  // 🔒 CHECKPOINT (Rivals-like)
-  if (result === 0 && winStreak > 0 && playerRating < 1000) {
-    return playerRating;
-  }
+// 🔒 CHECKPOINT (Rivals-like)
+if (result === 0 && winStreak >= 3 && playerRating < 1000) {
+  return playerRating;
+}
 
   return Math.round(playerRating + delta);
 }

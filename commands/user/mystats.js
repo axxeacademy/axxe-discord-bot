@@ -11,7 +11,12 @@ module.exports = {
 
   async execute(interaction) {
     const ladderId = await getLadderIdByChannel(interaction.channel.id);
+    console.debug('[mystats] getLadderIdByChannel:', {
+      channelId: interaction.channel.id,
+      ladderId
+    });
     if (!ladderId) {
+      console.debug('[mystats] No ladderId found for channel:', interaction.channel.id);
       return await interaction.reply({
         content: '❌ Este comando não pode ser usado neste canal.',
         flags: MessageFlags.Ephemeral

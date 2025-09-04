@@ -1,7 +1,7 @@
 // commands/admin/setladderchannel.js
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const db = require('../../utils/db'); // <- pooled connection from utils/db.js
-
+const { clearLadderChannelCache } = require('../../utils/ladderChannelMapping');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -80,6 +80,9 @@ if (interaction.isAutocomplete()) {
          ON DUPLICATE KEY UPDATE ladder_id = VALUES(ladder_id)`,
         [channelId, ladderId]
       );
+
+      // Invalidate the cache for this channel so new mapping is used immediately
+      clearLadderChannelCache(channelId);
 
       return interaction.editReply({
         content: `✅ Canal <#${channelId}> foi associado à ladder "${ladderName}" (slug: ${ladderSlug}, ID: ${ladderId}).`

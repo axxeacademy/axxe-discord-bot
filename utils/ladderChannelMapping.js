@@ -22,4 +22,8 @@ async function getLadderIdByChannel(channelId) {
   }
 }
 
-module.exports = { getLadderIdByChannel };
+function clearLadderChannelCache(channelId) {
+  if (channelId) cache.delete(channelId);
+}
+
+module.exports = { getLadderIdByChannel, clearLadderChannelCache };

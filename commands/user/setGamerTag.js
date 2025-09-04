@@ -5,7 +5,7 @@ const languageService = require('../../services/languageService');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('setgamertag')
+    .setName('setgamertag2')
     .setDescription('Defina o seu gamertag para poder entrar nas filas.')
     .addStringOption(option =>
       option

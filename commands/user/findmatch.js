@@ -40,7 +40,7 @@ module.exports = {
     const username = interaction.user.tag;
     const channelId = interaction.channel.id;
 
-    const ladderId = await getLadderIdByChannel(channelId);
+    const ladderId = await getLadderIdByChannel(interaction.channel.id);
     if (!ladderId) {
       return interaction.editReply({
         content: languageService.getMessage('pt-PT', 'command_not_in_channel') || '❌ Este comando não pode ser usado neste canal.',
@@ -96,8 +96,9 @@ module.exports = {
       }
 
       // Already in queue for this ladder?
+      // TODO: Change competition_id to be fetched from the database
       const [queueRows] = await db.execute(
-        'SELECT * FROM ladder_match_queue WHERE discord_id = ? AND competition_id = ? AND ladder_id = ?',
+        'SELECT * FROM ladder_match_queue WHERE discord_id = ? AND competition_id = 1 AND ladder_id = ?',
         [discordId, ladderId, ladderId]
       );
       if (queueRows.length > 0) {
@@ -128,7 +129,7 @@ module.exports = {
 
       // Ensure ladder_player_stats exists for this player+ladder
       // Set the correct competition_id (season id)
-      const competitionId = 1; // Or fetch dynamically if you have multiple seasons
+      const competitionId = 1; // TODO: Change to fetch dynamically if you have multiple seasons
 
       const [statsRows] = await db.execute(
         'SELECT player_id FROM ladder_player_stats WHERE player_id = ? AND competition_id = ? AND ladder_id = ?',
@@ -152,7 +153,7 @@ module.exports = {
                WHERE elo_rating > ps.elo_rating AND competition_id = ? AND ladder_id = ?) AS 'rank'
          FROM ladder_player_stats ps
          WHERE ps.player_id = ? AND ps.competition_id = ? AND ps.ladder_id = ?`,
-        [ladderId, ladderId, playerId, ladderId, ladderId]
+        [competitionId, ladderId, playerId, competitionId, ladderId]
       );
       const playerElo = eloRowsInitial[0]?.elo ?? null;
 

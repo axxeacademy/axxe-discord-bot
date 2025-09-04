@@ -30,7 +30,7 @@ module.exports = {
     const created = interaction.createdTimestamp || (interaction.createdAt ? interaction.createdAt.getTime() : now);
 
     // Always defer reply at the start
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply();
 
     try {
       if (!interaction.channel.isThread()) {

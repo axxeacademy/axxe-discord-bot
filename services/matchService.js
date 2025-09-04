@@ -292,12 +292,12 @@ async function confirmMatch(client, matchId, ladderId, thread, options = {}) {
   }
 }
 
-async function createMatch(player1Id, player2Id) {
+async function createMatch(player1Id, player2Id, ladderId) {
   try {
     const [result] = await execute(
       `INSERT INTO ladder_matches (player1_id, player2_id, status, player1_score, player2_score, ladder_id)
-       VALUES (?, ?, 'pending', 0, 0, 1)`,
-      [player1Id, player2Id]
+       VALUES (?, ?, 'pending', 0, 0, ?)`,
+      [player1Id, player2Id, ladderId]
     );
     return result.insertId;
   } catch (error) {

@@ -20,7 +20,7 @@ module.exports = {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     }
 
-    const ladderId = await getLadderIdByChannel(interaction.channelId);
+    const ladderId = await getLadderIdByChannel(interaction.channel.id);
     if (!ladderId) {
       return interaction.editReply({
         content: '❌ Este comando não pode ser usado neste canal.'

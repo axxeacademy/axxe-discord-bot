@@ -127,18 +127,22 @@ module.exports = {
       }
 
       // Ensure ladder_player_stats exists for this player+ladder
+      // Set the correct competition_id (season id)
+      const competitionId = 1; // Or fetch dynamically if you have multiple seasons
+
       const [statsRows] = await db.execute(
         'SELECT player_id FROM ladder_player_stats WHERE player_id = ? AND competition_id = ? AND ladder_id = ?',
-        [playerId, ladderId, ladderId]
+        [playerId, competitionId, ladderId]
       );
       if (statsRows.length === 0) {
         await db.execute(
           `INSERT INTO ladder_player_stats 
             (player_id, competition_id, ladder_id, elo_rating, games_played, wins, draws, losses, points, goals_scored, goals_conceded, goal_diff, win_streak, last_played)
-           VALUES (?, ?, ?, 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL)`,
-          [playerId, ladderId, ladderId]
+          VALUES (?, ?, ?, 1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL)`,
+          [playerId, competitionId, ladderId]
         );
       }
+
 
       // Fetch player's Elo and rank
       const [eloRowsInitial] = await db.execute(

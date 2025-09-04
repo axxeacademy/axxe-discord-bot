@@ -15,7 +15,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const ladderId = await getLadderIdByChannel(interaction.channelId);
+    const ladderId = await getLadderIdByChannel(interaction.channel.id);
     if (!ladderId) {
       return interaction.reply({
         content: '❌ This command cannot be used in this channel.',

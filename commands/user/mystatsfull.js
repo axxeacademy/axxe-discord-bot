@@ -10,7 +10,7 @@ module.exports = {
     .setDescription('Veja as suas estatísticas completas e detalhadas na ladder'),
 
   async execute(interaction) {
-    const ladderId = await getLadderIdByChannel(interaction.channelId);
+    const ladderId = await getLadderIdByChannel(interaction.channel.id);
     if (!ladderId) {
       return await interaction.reply({
         content: '❌ Este comando não pode ser usado neste canal.',

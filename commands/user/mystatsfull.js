@@ -35,6 +35,15 @@ module.exports = {
       const playerId = playerRow.id;
       const playerGamertag = playerRow.gamertag || 'Undefined';
 
+      // Check if player has stats in this ladder
+      const [[statsRow]] = await execute(
+        'SELECT * FROM ladder_player_stats WHERE player_id = ? AND ladder_id = ?',
+        [playerId, ladderId]
+      );
+      if (!statsRow) {
+        return await interaction.editReply('ℹ️ Ainda não tem jogos registados.');
+      }
+
       // Current ELO & Peak ELO (scoped to ladder)
       const [[eloStats]] = await execute(
         `SELECT 

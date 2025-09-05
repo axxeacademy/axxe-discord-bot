@@ -5,8 +5,9 @@
  */
 
 const { getNextOpponent, removeFromQueue } = require('./queueService');
-const { createMatch, getRankByUserID } = require('./matchService');
+const { createMatch, getRankByUserID, createMatchThread } = require('./matchService');
 const db = require('../utils/db');
+const { getChannelIdByLadder } = require('../utils/ladderChannelMapping');
 
 // Interval in milliseconds
 const INTERVAL = 30 * 1000;
@@ -64,23 +65,39 @@ async function reviewQueue(discordClient) {
         // Create match
         const matchId = await createMatch(player_id, opponent.player_id, ladder_id);
 
-        // Optionally, fetch player ranks for notification
-        const playerRank = await getRankByUserID(player_id, ladder_id, 1);
-        const opponentRank = await getRankByUserID(opponent.player_id, ladder_id, 1);
+        // Fetch player gamertags
+        const [player1Rows] = await db.execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [player_id]);
+        const [player2Rows] = await db.execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [opponent.player_id]);
+        const player1Gamertag = player1Rows[0]?.gamertag || 'Jogador 1';
+        const player2Gamertag = player2Rows[0]?.gamertag || 'Jogador 2';
 
-        // Notify both players (requires discordClient)
-        if (discordClient) {
+        // Fetch the correct channel for the ladder
+        let channelId = null;
+        try {
+          channelId = await getChannelIdByLadder(ladder_id);
+        } catch (e) {
+          console.error('Erro ao obter o canal do ladder:', e);
+        }
+
+        if (discordClient && channelId) {
           try {
+            const channel = await discordClient.channels.fetch(channelId);
+            // Create the match thread
+            const thread = await channel.threads.create({
+              name: `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`,
+              autoArchiveDuration: 60,
+              reason: 'Match thread created',
+              type: 12, // ChannelType.PrivateThread
+            });
+
+            // Notify both players in Portuguese with only the thread link
             const user1 = await discordClient.users.fetch(discord_id);
             const user2 = await discordClient.users.fetch(opponent.discord_id);
-            await user1.send(
-              `You have been matched for a game! Opponent: <@${opponent.discord_id}> | Match ID: ${matchId}`
-            );
-            await user2.send(
-              `You have been matched for a game! Opponent: <@${discord_id}> | Match ID: ${matchId}`
-            );
+            const threadUrl = thread.url;
+            await user1.send(`Tens jogo na Ladder! Acede à Thread para jogar: ${threadUrl}`);
+            await user2.send(`Tens Jogo na Ladder! Acede à Thread para jogar: ${threadUrl}`);
           } catch (err) {
-            console.error('Failed to send DM to matched players:', err);
+            console.error('Falha ao criar o tópico ou enviar DM aos jogadores:', err);
           }
         }
 

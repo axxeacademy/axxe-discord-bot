@@ -74,8 +74,13 @@ module.exports = {
           s.win_streak
         FROM ladder_player_stats s
         JOIN users u ON u.id = s.player_id
-        WHERE s.ladder_id = ?
-        ORDER BY s.elo_rating DESC, s.points DESC, s.goal_diff DESC
+        WHERE s.ladder_id = ? AND s.competition_id = 1
+        ORDER BY
+          s.elo_rating DESC,
+          s.goal_diff DESC,
+          s.goals_scored DESC,
+          s.goals_conceded ASC,
+          LOWER(u.username) ASC
         LIMIT ${topX}
       `;
 

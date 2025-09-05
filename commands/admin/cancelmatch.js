@@ -123,9 +123,12 @@ module.exports = {
       await db.execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['pending', matchId]);
       await db.execute('COMMIT');
     } catch (err) {
-      await db.execute('ROLLBACK');
+      try { await db.execute('ROLLBACK'); } catch (rollbackErr) {
+        console.error('Rollback failed:', rollbackErr);
+      }
+      console.error('Erro ao desfazer o jogo:', err);
       if (deferred) {
-        return interaction.editReply({ content: '❌ Erro ao desfazer o jogo.' });
+        return interaction.editReply({ content: `❌ Erro ao desfazer o jogo: ${err.message || err}` });
       }
       return;
     }

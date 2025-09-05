@@ -110,7 +110,7 @@ module.exports = {
 
     // Update player stats and delete ELO history in a transaction
     try {
-      await db.execute('START TRANSACTION');
+      await db.query('START TRANSACTION');
       for (const u of updates) {
         await db.execute(
           `UPDATE ladder_player_stats
@@ -121,9 +121,9 @@ module.exports = {
       }
       await db.execute('DELETE FROM ladder_elo_history WHERE match_id = ?', [matchId]);
       await db.execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['pending', matchId]);
-      await db.execute('COMMIT');
+      await db.query('COMMIT');
     } catch (err) {
-      try { await db.execute('ROLLBACK'); } catch (rollbackErr) {
+      try { await db.query('ROLLBACK'); } catch (rollbackErr) {
         console.error('Rollback failed:', rollbackErr);
       }
       console.error('Erro ao desfazer o jogo:', err);

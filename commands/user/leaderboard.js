@@ -74,6 +74,7 @@ module.exports = {
           s.win_streak
         FROM ladder_player_stats s
         JOIN users u ON u.id = s.player_id
+        INNER JOIN ladder_registrations r ON r.player_id = s.player_id AND r.ladder_id = s.ladder_id
         WHERE s.ladder_id = ? AND s.competition_id = 1
         ORDER BY
           s.elo_rating DESC,

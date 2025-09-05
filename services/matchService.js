@@ -334,14 +334,15 @@ async function getMatchById(matchId) {
 }
 
 async function createMatchThread(
-  interaction,
+  interactionOrChannel,
   player1DiscordId,
   player2DiscordId,
   matchId,
   player1Gamertag,
   player2Gamertag
 ) {
-  const channel = interaction.channel;
+  // Accept either an interaction (with .channel) or a channel object directly
+  const channel = interactionOrChannel.threads ? interactionOrChannel : interactionOrChannel.channel;
   const threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
 
   const thread = await channel.threads.create({

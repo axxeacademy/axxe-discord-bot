@@ -15,6 +15,7 @@ const INTERVAL = 30 * 1000;
 let running = false;
 
 async function reviewQueue(discordClient) {
+  console.log(`[DEBUG] reviewQueue called at ${new Date().toISOString()}`);
   if (running) return; // Prevent overlapping runs
   running = true;
   try {
@@ -82,13 +83,15 @@ async function reviewQueue(discordClient) {
         if (discordClient && channelId) {
           try {
             const channel = await discordClient.channels.fetch(channelId);
-            // Create the match thread
-            const thread = await channel.threads.create({
-              name: `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`,
-              autoArchiveDuration: 60,
-              reason: 'Match thread created',
-              type: 12, // ChannelType.PrivateThread
-            });
+            // Create the match thread using the shared function
+            const thread = await createMatchThread(
+              channel,
+              discord_id,
+              opponent.discord_id,
+              matchId,
+              player1Gamertag,
+              player2Gamertag
+            );
 
             // Notify both players in Portuguese with only the thread link
             const user1 = await discordClient.users.fetch(discord_id);

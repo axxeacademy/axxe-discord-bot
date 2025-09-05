@@ -70,7 +70,7 @@ module.exports = {
       );
 
       // Create match via your service (make sure it also uses the shared pool)
-      const matchId = await createMatch(playerId, dummyId, { ladderId });
+      const matchId = await createMatch(playerId, dummyId, ladderId);
 
       // Remove from queue (both)
       await removeFromQueue(discordId, ladderId);

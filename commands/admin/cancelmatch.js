@@ -120,7 +120,7 @@ module.exports = {
         );
       }
       await db.execute('DELETE FROM ladder_elo_history WHERE match_id = ?', [matchId]);
-      await db.execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['pending', matchId]);
+      await db.execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['cancelled', matchId]);
       await db.query('COMMIT');
     } catch (err) {
       try { await db.query('ROLLBACK'); } catch (rollbackErr) {

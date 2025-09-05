@@ -5,6 +5,8 @@ const { Client, MessageFlags, GatewayIntentBits, Partials, Collection, Events } 
 const fs = require('fs');
 const path = require('path');
 
+const { startQueueReview } = require('./services/queueReviewService');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -45,6 +47,7 @@ for (const folder of commandFolders) {
 // Ready
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  startQueueReview(client);
 });
 
 // Interactions (autocomplete + slash)

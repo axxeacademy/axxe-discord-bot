@@ -62,25 +62,26 @@ module.exports = {
       const sql = `
         SELECT
           u.username,
-          COALESCE(u.gamertag, u.username) AS gamertag,
-          s.player_id,
-          s.elo_rating,
-          s.games_played,
-          s.wins,
-          s.losses,
-          s.goals_scored,
-          s.goals_conceded,
-          s.goal_diff,
-          s.win_streak
-        FROM ladder_player_stats s
-        JOIN users u ON u.id = s.player_id
-        INNER JOIN ladder_registrations r ON r.player_id = s.player_id AND r.ladder_id = s.ladder_id
-        WHERE s.ladder_id = ? AND s.competition_id = 1
+          u.gamertag,
+          r.user_id AS player_id,
+          COALESCE(s.elo_rating, 1000) AS elo_rating,
+          COALESCE(s.games_played, 0) AS games_played,
+          COALESCE(s.wins, 0) AS wins,
+          COALESCE(s.losses, 0) AS losses,
+          COALESCE(s.goals_scored, 0) AS goals_scored,
+          COALESCE(s.goals_conceded, 0) AS goals_conceded,
+          COALESCE(s.goal_diff, 0) AS goal_diff,
+          COALESCE(s.win_streak, 0) AS win_streak
+        FROM ladder_registrations r
+        LEFT JOIN users u ON u.id = r.user_id
+        LEFT JOIN ladder_player_stats s
+          ON s.player_id = r.user_id AND s.ladder_id = r.ladder_id AND s.competition_id = 1
+        WHERE r.ladder_id = ?
         ORDER BY
-          s.elo_rating DESC,
-          s.goal_diff DESC,
-          s.goals_scored DESC,
-          s.goals_conceded ASC,
+          elo_rating DESC,
+          goal_diff DESC,
+          goals_scored DESC,
+          goals_conceded ASC,
           LOWER(u.username) ASC
         LIMIT ${topX}
       `;
@@ -107,9 +108,10 @@ module.exports = {
       rows.forEach((p, idx) => {
         const fire = p.win_streak > 3 ? ' 🔥' : '';
         const wperc = pct(p.wins, p.games_played);
+        const displayName = p.gamertag && p.gamertag.trim() !== "" ? p.gamertag : p.username;
 
-        text += `\n**#${idx + 1} | ${p.elo_rating} - ${p.gamertag}${fire}**\n`;
-        text += `🎮 **J:** ${p.games_played} | **V:** ${p.wins} | **D:** ${p.losses} | `;
+        text += `\n**#${idx + 1} | ${p.elo_rating} - ${displayName}${fire}**\n`;
+        text += `🎮 **J:** ${p.games_played || 0} | **V:** ${p.wins || 0} | **D:** ${p.losses || 0} | `;
         text += `**GM:** ${p.goals_scored || 0} | **GS:** ${p.goals_conceded || 0} | `;
         text += `**DG:** ${p.goal_diff || 0} | **W%:** ${wperc}%\n`;
       });

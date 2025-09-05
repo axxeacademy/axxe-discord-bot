@@ -363,11 +363,63 @@ async function createMatchThread(
   return thread;
 }
 
+/**
+ * Get the rank of a user in a ladder, using multi-level sorting logic.
+ * @param {number} userId - The player's user ID.
+ * @param {number} ladderId - The ladder ID.
+ * @param {number} competitionId - The competition/season ID.
+ * @returns {Promise<number|null>} The rank (1-based), or null if not found.
+ */
+async function getRankByUserID(userId, ladderId, competitionId) {
+  // Fetch all player stats for this ladder and competition
+  const [allStatsRows] = await execute(
+    `SELECT 
+        ps.player_id,
+        ps.elo_rating,
+        ps.games_played,
+        ps.wins,
+        ps.draws,
+        ps.losses,
+        ps.points,
+        ps.goals_scored,
+        ps.goals_conceded,
+        ps.goal_diff,
+        ps.win_streak,
+        u.username
+     FROM ladder_player_stats ps
+     JOIN users u ON ps.player_id = u.id
+     WHERE ps.competition_id = ? AND ps.ladder_id = ?`,
+    [competitionId, ladderId]
+  );
+
+  // Sort using the provided comparator logic (default: elo_rating DESC)
+  const sortedStats = allStatsRows.slice().sort((a, b) => {
+    // 1. ELO Rating (desc)
+    if (a.elo_rating !== b.elo_rating) return b.elo_rating - a.elo_rating;
+    // 2. Goal Difference (desc)
+    if (a.goal_diff !== b.goal_diff) return b.goal_diff - a.goal_diff;
+    // 3. Goals Scored (desc)
+    if (a.goals_scored !== b.goals_scored) return b.goals_scored - a.goals_scored;
+    // 4. Goals Conceded (asc)
+    if (a.goals_conceded !== b.goals_conceded) return a.goals_conceded - b.goals_conceded;
+    // 5. Name (asc, case-insensitive)
+    let nameA = (a.username || "").toLowerCase();
+    let nameB = (b.username || "").toLowerCase();
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    return 0;
+  });
+
+  const idx = sortedStats.findIndex(row => row.player_id === userId);
+  return idx >= 0 ? idx + 1 : null;
+}
+
 module.exports = {
   createMatch,
   deleteMatch,
   updateMatchResult,
   getMatchById,
   createMatchThread,
-  confirmMatch
+  confirmMatch,
+  getRankByUserID
 };

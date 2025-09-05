@@ -3,7 +3,7 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // pooled mysql2/promise
 const { logCommand } = require('../../utils/logger');
 const { addToQueue, getNextOpponent, removeFromQueue } = require('../../services/queueService');
-const { createMatch, createMatchThread } = require('../../services/matchService');
+const { createMatch, createMatchThread, getRankByUserID } = require('../../services/matchService');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const languageService = require('../../services/languageService');
 const dayjs = require('dayjs');
@@ -147,17 +147,13 @@ module.exports = {
       }
 
 
-      // Fetch player's Elo and rank
-      const [eloRowsInitial] = await db.execute(
-        `SELECT 
-            ps.elo_rating AS elo,
-            (SELECT COUNT(*) + 1 FROM ladder_player_stats 
-               WHERE elo_rating > ps.elo_rating AND competition_id = ? AND ladder_id = ?) AS 'rank'
-         FROM ladder_player_stats ps
-         WHERE ps.player_id = ? AND ps.competition_id = ? AND ps.ladder_id = ?`,
-        [competitionId, ladderId, playerId, competitionId, ladderId]
+      // Fetch player's Elo and rank using matchService
+      const [playerStatsRows] = await db.execute(
+        'SELECT elo_rating FROM ladder_player_stats WHERE player_id = ? AND competition_id = ? AND ladder_id = ?',
+        [playerId, competitionId, ladderId]
       );
-      const playerElo = eloRowsInitial[0]?.elo ?? null;
+      const playerElo = playerStatsRows[0]?.elo_rating ?? null;
+      const playerRank = await getRankByUserID(playerId, ladderId, competitionId);
 
       // Try to get a suitable opponent from the queue service
       const opponent = await getNextOpponent(discordId, playerElo, ladderId);
@@ -262,34 +258,28 @@ module.exports = {
         );
 
         return interaction.editReply({
-          content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${playerElo}, Classificação: #${eloRowsInitial[0]?.rank ?? 'N/A'}`,
+          content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${playerElo}, Classificação: #${playerRank ?? 'N/A'}`,
         });
       }
 
       // No opponent found → add to queue
       await addToQueue(playerId, discordId, ladderId);
 
-      // Re-read Elo and rank for the confirmation message
-      const [eloRowsAfter] = await db.execute(
-        `SELECT 
-            ps.elo_rating AS elo,
-            (SELECT COUNT(*) + 1 FROM ladder_player_stats 
-               WHERE elo_rating > ps.elo_rating AND competition_id = ? AND ladder_id = ?) AS 'rank'
-         FROM ladder_player_stats ps
-         WHERE ps.player_id = ? AND ps.competition_id = ? AND ps.ladder_id = ?`,
-        [competitionId, ladderId, playerId, competitionId, ladderId]
+      // Re-read Elo and rank for the confirmation message using matchService
+      const [playerStatsRowsAfter] = await db.execute(
+        'SELECT elo_rating FROM ladder_player_stats WHERE player_id = ? AND competition_id = ? AND ladder_id = ?',
+        [playerId, competitionId, ladderId]
       );
-
-      const elo = eloRowsAfter[0]?.elo ?? 'N/A';
-      const rank = eloRowsAfter[0]?.rank ?? 'N/A';
+      const elo = playerStatsRowsAfter[0]?.elo_rating ?? 'N/A';
+      const rank = await getRankByUserID(playerId, ladderId, competitionId);
 
       await interaction.editReply({
-        content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${elo}, Classificação: #${rank}\n\nPara sair da fila, use o comando /cancelqueue.\nPara ver quantos jogadores estão na fila, use o comando /status.`,
+        content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${elo}, Classificação: #${rank ?? 'N/A'}\n\nPara sair da fila, use o comando /cancelqueue.\nPara ver quantos jogadores estão na fila, use o comando /status.`,
       });
 
       await logCommand(
         interaction,
-        `${playerGamertag} entrou na fila de matchmaking da ladder ${ladderName} — Elo: ${elo}, Classificação: #${rank}`
+        `${playerGamertag} entrou na fila de matchmaking da ladder ${ladderName} — Elo: ${elo}, Classificação: #${rank ?? 'N/A'}`
       );
     } catch (error) {
       console.error('❌ DB Error in /findmatch:', error);

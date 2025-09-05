@@ -48,13 +48,15 @@ module.exports = {
     }
 
     try {
-      // Fetch allowed_start_time, allowed_end_time, timezone for this ladder
+      // Fetch allowed_start_time, allowed_end_time, timezone, and name for this ladder
       const [ladderRows] = await db.execute(
-        'SELECT allowed_start_time, allowed_end_time, timezone FROM ladders WHERE id = ?',
+        'SELECT allowed_start_time, allowed_end_time, timezone, name FROM ladders WHERE id = ?',
         [ladderId]
       );
+      let ladderName = '';
       if (ladderRows.length > 0) {
-        const { allowed_start_time, allowed_end_time, timezone: ladderTz } = ladderRows[0];
+        const { allowed_start_time, allowed_end_time, timezone: ladderTz, name } = ladderRows[0];
+        ladderName = name || `Ladder ${ladderId}`;
         if (allowed_start_time && allowed_end_time && ladderTz) {
           // Get current time in ladder's timezone
           const now = dayjs().tz(ladderTz);
@@ -260,7 +262,7 @@ module.exports = {
         );
 
         return interaction.editReply({
-          content: `✅ Entrou na fila da ladder ${ladderId} — Elo: ${playerElo}, Classificação: #${eloRowsInitial[0]?.rank ?? 'N/A'}`,
+          content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${playerElo}, Classificação: #${eloRowsInitial[0]?.rank ?? 'N/A'}`,
         });
       }
 
@@ -275,19 +277,19 @@ module.exports = {
                WHERE elo_rating > ps.elo_rating AND competition_id = ? AND ladder_id = ?) AS 'rank'
          FROM ladder_player_stats ps
          WHERE ps.player_id = ? AND ps.competition_id = ? AND ps.ladder_id = ?`,
-        [ladderId, ladderId, playerId, ladderId, ladderId]
+        [competitionId, ladderId, playerId, competitionId, ladderId]
       );
 
       const elo = eloRowsAfter[0]?.elo ?? 'N/A';
       const rank = eloRowsAfter[0]?.rank ?? 'N/A';
 
       await interaction.editReply({
-        content: `✅ Entrou na fila da ladder ${ladderId} — Elo: ${elo}, Classificação: #${rank}\n\nPara sair da fila, use o comando /cancelqueue.\nPara ver quantos jogadores estão na fila, use o comando /status.`,
+        content: `✅ ${ladderName} | Entrou na fila de matchmaking — Elo: ${elo}, Classificação: #${rank}\n\nPara sair da fila, use o comando /cancelqueue.\nPara ver quantos jogadores estão na fila, use o comando /status.`,
       });
 
       await logCommand(
         interaction,
-        `${playerGamertag} entrou na fila de matchmaking da ladder ${ladderId} — Elo: ${elo}, Classificação: #${rank}`
+        `${playerGamertag} entrou na fila de matchmaking da ladder ${ladderName} — Elo: ${elo}, Classificação: #${rank}`
       );
     } catch (error) {
       console.error('❌ DB Error in /findmatch:', error);

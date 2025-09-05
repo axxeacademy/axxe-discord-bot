@@ -205,9 +205,9 @@ module.exports = {
           });
         }
 
-        // Remove both from queue
-        await removeFromQueue(discordId, ladderId);
-        await removeFromQueue(opponent.discord_id, ladderId);
+        // Remove both from queue and log exit in ladder_queue_history
+        await removeFromQueue(discordId, ladderId, competitionId, 'matched');
+        await removeFromQueue(opponent.discord_id, ladderId, competitionId, 'matched');
 
         // Create match + thread
         const matchId = await createMatch(playerId, opponentPlayerId, ladderId);
@@ -264,6 +264,13 @@ module.exports = {
 
       // No opponent found → add to queue
       await addToQueue(playerId, discordId, ladderId);
+
+      // Log queue entry in ladder_queue_history
+      await db.execute(
+        `INSERT INTO ladder_queue_history (user_id, discord_id, competition_id, ladder_id, queued_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [playerId, discordId, competitionId, ladderId]
+      );
 
       // Re-read Elo and rank for the confirmation message using matchService
       const [playerStatsRowsAfter] = await db.execute(

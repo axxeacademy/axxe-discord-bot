@@ -3,6 +3,7 @@ const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('disc
 const { clearQueue } = require('../../services/queueService');
 const { logCommand } = require('../../utils/logger');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
+const db = require('../../utils/db');
 
 
 module.exports = {
@@ -21,6 +22,24 @@ module.exports = {
     }
 
     try {
+      // Fetch all users in the queue for this ladder, with their discord_id and competition_id
+      const [queueRows] = await db.execute(
+        'SELECT discord_id, competition_id FROM ladder_match_queue WHERE ladder_id = ?',
+        [ladderId]
+      );
+
+      // For each user, update ladder_queue_history to set left_at and left_reason='purged'
+      for (const row of queueRows) {
+        await db.execute(
+          `UPDATE ladder_queue_history
+           SET left_at = UTC_TIMESTAMP(), left_reason = 'purged'
+           WHERE discord_id = ? AND ladder_id = ? AND competition_id = ? AND left_at IS NULL
+           ORDER BY queued_at DESC
+           LIMIT 1`,
+          [row.discord_id, ladderId, row.competition_id]
+        );
+      }
+
       await clearQueue(ladderId);
 
       if (interaction.replied) {

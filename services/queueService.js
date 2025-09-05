@@ -9,8 +9,19 @@ async function addToQueue(playerId, discordId, ladderId) {
   );
 }
 
-async function removeFromQueue(discordId, ladderId) {
+async function removeFromQueue(discordId, ladderId, competitionId, leftReason) {
   if (ladderId === undefined) throw new Error('ladderId is required');
+  // Update ladder_queue_history for the latest open session
+  if (competitionId && leftReason) {
+    await execute(
+      `UPDATE ladder_queue_history
+       SET left_at = UTC_TIMESTAMP(), left_reason = ?
+       WHERE discord_id = ? AND ladder_id = ? AND competition_id = ? AND left_at IS NULL
+       ORDER BY queued_at DESC
+       LIMIT 1`,
+      [leftReason, discordId, ladderId, competitionId]
+    );
+  }
   await execute(
     'DELETE FROM ladder_match_queue WHERE discord_id = ? AND ladder_id = ?',
     [discordId, ladderId]

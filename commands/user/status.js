@@ -37,18 +37,20 @@ module.exports = {
         'SELECT looking_since FROM ladder_match_queue WHERE discord_id = ? AND ladder_id = ?',
         [discordId, ladderId]
       );
+      let queueStatusMsg = '';
+      let inQueue = false;
+      let minutes = 0, seconds = 0;
       if (queueRows.length === 0) {
-        return interaction.reply({
-          content: '❌ Não está na fila de matchmaking.',
-          flags: MessageFlags.Ephemeral
-        });
+        queueStatusMsg = '❌ Você não está na fila. Para encontrar um oponente escreva /findmatch';
+      } else {
+        inQueue = true;
+        const lookingSince = new Date(queueRows[0].looking_since);
+        const now = new Date();
+        const elapsedMs = now - lookingSince;
+        minutes = Math.floor(elapsedMs / 60000);
+        seconds = Math.floor((elapsedMs % 60000) / 1000);
+        queueStatusMsg = `📊 Entrou na fila há **${minutes}m ${seconds}s**.`;
       }
-
-      const lookingSince = new Date(queueRows[0].looking_since);
-      const now = new Date();
-      const elapsedMs = now - lookingSince;
-      const minutes = Math.floor(elapsedMs / 60000);
-      const seconds = Math.floor((elapsedMs % 60000) / 1000);
 
       // Total in queue for this ladder
       const [totalInQueueRows] = await execute(
@@ -57,10 +59,18 @@ module.exports = {
       );
       const totalInQueue = totalInQueueRows[0]?.total ?? 0;
 
+      // Total active games (pending or disputed) for this ladder
+      const [activeGamesRows] = await execute(
+        "SELECT COUNT(*) AS total FROM ladder_matches WHERE ladder_id = ? AND status IN ('pending', 'disputed')",
+        [ladderId]
+      );
+      const totalActiveGames = activeGamesRows[0]?.total ?? 0;
+
       await interaction.reply({
         content:
-          `📊 Entrou na fila há **${minutes}m ${seconds}s**.\n` +
-          `👥 Atualmente há **${totalInQueue}** jogadores na fila.`,
+          `${queueStatusMsg}\n` +
+          `👥 Atualmente há **${totalInQueue}** jogadores na fila.\n` +
+          `🎮 Jogos a decorrer neste momento: **${totalActiveGames}**`,
         flags: MessageFlags.Ephemeral
       });
     } catch (error) {

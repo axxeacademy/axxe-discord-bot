@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const db = require('../../utils/db');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const languageService = require('../../services/languageService');
@@ -20,7 +20,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Check admin permissions (redundant, but extra safety)
     if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {

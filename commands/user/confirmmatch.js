@@ -7,7 +7,8 @@ const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
 const matchService = require('../../services/matchService');
 const { confirmationTimers } = require('../user/reportmatch');
 const languageService = require('../../services/languageService');
-const { getGamertagByDiscordId, isAdminByDiscordId } = require('../../services/userService');
+const { getGamertagByDiscordId } = require('../../services/userService');
+const config = require('../../config');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -90,9 +91,16 @@ module.exports = {
         }
       }
 
-      // Prevent reporter from confirming unless admin
+      // Prevent reporter from confirming unless they have an admin role
       if (matchDetails.reported_by_discord_id && String(matchDetails.reported_by_discord_id) === String(confirmerDiscordId)) {
-        const isAdmin = await isAdminByDiscordId(confirmerDiscordId);
+        // Get admin role IDs from config
+        const adminRoleIds = config.discord.ladderAdminRoleIds || [];
+        // Get the user's roles (as a Set of role IDs)
+        const userRoleIds = interaction.member?.roles?.cache
+          ? Array.from(interaction.member.roles.cache.keys())
+          : [];
+        // Check if user has any admin role
+        const isAdmin = userRoleIds.some((roleId) => adminRoleIds.includes(roleId));
         if (!isAdmin) {
           if (deferred) {
             return interaction.editReply({ content: '🚫 Não pode confirmar um jogo que você mesmo reportou (a não ser que seja admin).' });

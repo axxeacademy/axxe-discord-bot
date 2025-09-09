@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { MessageFlags } = require('discord.js');
 const db = require('../../utils/db');
 const matchService = require('../../services/matchService');
@@ -7,12 +7,13 @@ const languageService = require('../../services/languageService');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('cancelmatch')
-    .setDescription('Desfaz um jogo confirmado, revertendo ELO e estatísticas.')
+    .setDescription('Cancela um jogo (antes ou depois de confirmado). Apenas administradores podem usar.')
     .addIntegerOption(option =>
       option.setName('matchid')
-        .setDescription('ID do jogo a desfazer')
+        .setDescription('ID do jogo a cancelar')
         .setRequired(true)
-    ),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     const matchId = interaction.options.getInteger('matchid');
@@ -22,6 +23,14 @@ module.exports = {
       deferred = true;
     } catch (e) {}
 
+    // Admin permission check (redundant, but extra safety)
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      if (deferred) {
+        return interaction.editReply({ content: '❌ Apenas administradores podem usar este comando.' });
+      }
+      return;
+    }
+
     // Fetch match details
     const match = await matchService.getMatchById(matchId);
     if (!match) {
@@ -30,9 +39,18 @@ module.exports = {
       }
       return;
     }
-    if (match.status !== 'confirmed') {
+    if (match.status === 'confirmed') {
+      // Proceed with ELO/stat reversal (existing logic below)
+    } else if (match.status === 'pending' || match.status === 'disputed') {
+      // For unconfirmed/disputed matches, just cancel
+      await db.execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['cancelled', matchId]);
       if (deferred) {
-        return interaction.editReply({ content: '❌ Só é possível desfazer jogos confirmados.' });
+        return interaction.editReply({ content: '✅ Jogo cancelado com sucesso (antes da confirmação).' });
+      }
+      return;
+    } else {
+      if (deferred) {
+        return interaction.editReply({ content: `❌ Não é possível cancelar um jogo com status: ${match.status}` });
       }
       return;
     }

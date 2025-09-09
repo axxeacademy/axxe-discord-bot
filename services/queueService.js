@@ -1,5 +1,21 @@
-// services/queueService.js
+ // services/queueService.js
 const { execute } = require('../utils/db');
+
+/**
+ * Fetch the per-opponent daily match limit for a given ladder.
+ * @param {number} ladderId
+ * @returns {Promise<number|null>} The max matches per opponent, or null if not set.
+ */
+async function getMaxMatchesPerOpponent(ladderId) {
+  let [rows] = await execute(
+    'SELECT max_matches_per_opponent FROM ladders WHERE id = ?',
+    [ladderId]
+  );
+  if (rows.length > 0 && rows[0].max_matches_per_opponent !== null) {
+    return Number(rows[0].max_matches_per_opponent);
+  }
+  return null;
+}
 
 async function addToQueue(playerId, discordId, ladderId) {
   if (ladderId === undefined) throw new Error('ladderId is required');
@@ -50,6 +66,9 @@ async function getNextOpponent(discordId, playerElo, ladderId) {
   const mySince = myLookingSince ? new Date(myLookingSince) : null;
   const myWaitMinutes = mySince ? (now - mySince) / 60000 : 0;
 
+  // Fetch per-opponent daily match limit for this ladder
+  const maxMatchesPerOpponent = await getMaxMatchesPerOpponent(ladderId);
+
   // Define Elo thresholds based on waiting time
   let eloThreshold = 50; // initial ±50
   if (myWaitMinutes >= 5) {
@@ -58,7 +77,7 @@ async function getNextOpponent(discordId, playerElo, ladderId) {
     eloThreshold = 150;
   }
 
-  // Try to find an opponent within the Elo threshold
+  // Try to find all possible opponents within the Elo threshold, ordered by waiting time
   let [rows] = await execute(
     `SELECT q.*, ps.elo_rating
      FROM ladder_match_queue q
@@ -67,8 +86,7 @@ async function getNextOpponent(discordId, playerElo, ladderId) {
      WHERE q.discord_id != ? 
        AND q.ladder_id = ? 
        AND ABS(ps.elo_rating - ?) <= ?
-     ORDER BY q.looking_since ASC
-     LIMIT 1`,
+     ORDER BY q.looking_since ASC`,
     [discordId, ladderId, playerElo, eloThreshold]
   );
 
@@ -87,20 +105,55 @@ async function getNextOpponent(discordId, playerElo, ladderId) {
        WHERE q.discord_id != ? 
          AND q.ladder_id = ? 
          AND TIMESTAMPDIFF(MINUTE, q.looking_since, UTC_TIMESTAMP()) >= 5
-       ORDER BY q.looking_since ASC
-       LIMIT 1`,
+       ORDER BY q.looking_since ASC`,
       [discordId, ladderId]
     );
-    if (rows.length > 0) {
-      const oppSince = new Date(rows[0].looking_since);
-      const oppWaitMinutes = (now - oppSince) / 60000;
-      if (oppWaitMinutes >= 5) {
-        return rows[0];
-      }
-    }
   }
 
-  return rows[0] || null;
+  // For each candidate, check per-opponent daily match limit
+  for (const candidate of rows) {
+    if (!maxMatchesPerOpponent || isNaN(maxMatchesPerOpponent) || maxMatchesPerOpponent <= 0) {
+      // No limit set, allow match
+      return candidate;
+    }
+
+    // Get player IDs for both users
+    let [userRows1] = await execute(
+      'SELECT id FROM users WHERE discord_id = ?',
+      [discordId]
+    );
+    let [userRows2] = await execute(
+      'SELECT id FROM users WHERE discord_id = ?',
+      [candidate.discord_id]
+    );
+    if (userRows1.length === 0 || userRows2.length === 0) continue;
+    const player1Id = userRows1[0].id;
+    const player2Id = userRows2[0].id;
+
+    // Count today's confirmed matches between these two players in this ladder
+    let [matchCountRows] = await execute(
+      `SELECT COUNT(*) AS match_count
+       FROM ladder_matches
+       WHERE ladder_id = ?
+         AND status = 'confirmed'
+         AND (
+           (player1_id = ? AND player2_id = ?)
+           OR (player1_id = ? AND player2_id = ?)
+         )
+         AND DATE(match_date) = CURDATE()`,
+      [ladderId, player1Id, player2Id, player2Id, player1Id]
+    );
+    const matchCount = matchCountRows[0]?.match_count ?? 0;
+
+    if (matchCount < maxMatchesPerOpponent) {
+      // Under the limit, allow match
+      return candidate;
+    }
+    // Otherwise, skip this candidate and try the next
+  }
+
+  // No suitable opponent found
+  return null;
 }
 
 module.exports = {
@@ -108,4 +161,5 @@ module.exports = {
   removeFromQueue,
   clearQueue,
   getNextOpponent,
+  getMaxMatchesPerOpponent,
 };

@@ -415,6 +415,69 @@ async function getRankByUserID(userId, ladderId, competitionId) {
   return idx >= 0 ? idx + 1 : null;
 }
 
+/**
+ * Get global stats for a ladder.
+ * @param {number} ladderId
+ * @returns {Promise<Object>} Stats object
+ */
+async function getLadderStats(ladderId) {
+  // Number of matches played
+  const [[{ matchesPlayed }]] = await execute('SELECT COUNT(*) AS matchesPlayed FROM ladder_matches WHERE ladder_id = ?', [ladderId]);
+  // Number of unique players
+  const [[{ players }]] = await execute('SELECT COUNT(DISTINCT player_id) AS players FROM ladder_player_stats WHERE ladder_id = ?', [ladderId]);
+  // Number of active queues (if available)
+  let activeQueues = 0;
+  try {
+    const [[{ count }]] = await execute('SELECT COUNT(*) AS count FROM ladder_match_queue WHERE ladder_id = ?', [ladderId]);
+    activeQueues = count;
+  } catch {}
+  // Number of disputes (matches with status 'disputed')
+  const [[{ disputes }]] = await execute('SELECT COUNT(*) AS disputes FROM ladder_matches WHERE ladder_id = ? AND status = ?', [ladderId, 'disputed']);
+  // Unconfirmed matches (status 'pending')
+  const [[{ unconfirmed }]] = await execute('SELECT COUNT(*) AS unconfirmed FROM ladder_matches WHERE ladder_id = ? AND status = ?', [ladderId, 'pending']);
+  // Penalty shootouts (matches with non-null penalty_score1/2)
+  const [[{ penaltyShootouts }]] = await execute('SELECT COUNT(*) AS penaltyShootouts FROM ladder_matches WHERE ladder_id = ? AND penalty_score1 IS NOT NULL AND penalty_score2 IS NOT NULL', [ladderId]);
+  // Draw rate (matches with equal scores and not cancelled)
+  const [[{ draws }]] = await execute('SELECT COUNT(*) AS draws FROM ladder_matches WHERE ladder_id = ? AND player1_score = player2_score AND status != "cancelled"', [ladderId]);
+  // Average goals per match
+  const [[{ avgGoals }]] = await execute('SELECT AVG(player1_score + player2_score) AS avgGoals FROM ladder_matches WHERE ladder_id = ? AND status != "cancelled"', [ladderId]);
+  // Biggest win margin
+  const [[{ maxWinMargin }]] = await execute('SELECT MAX(ABS(player1_score - player2_score)) AS maxWinMargin FROM ladder_matches WHERE ladder_id = ? AND status != "cancelled"', [ladderId]);
+  // Recent activity (matches in last 7 days)
+  const [[{ recentMatches }]] = await execute('SELECT COUNT(*) AS recentMatches FROM ladder_matches WHERE ladder_id = ? AND match_date >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND status != "cancelled"', [ladderId]);
+  // Most active player (by games_played)
+  const [[mostActivePlayer]] = await execute(
+    'SELECT player_id, games_played FROM ladder_player_stats WHERE ladder_id = ? ORDER BY games_played DESC LIMIT 1',
+    [ladderId]
+  );
+  // Top 3 players by wins
+  const topPlayers = await execute(
+    'SELECT player_id, wins FROM ladder_player_stats WHERE ladder_id = ? ORDER BY wins DESC LIMIT 3',
+    [ladderId]
+  );
+  // Average matches per player
+  const [[{ avgMatchesPerPlayer }]] = await execute(
+    'SELECT AVG(games_played) AS avgMatchesPerPlayer FROM ladder_player_stats WHERE ladder_id = ?',
+    [ladderId]
+  );
+
+  return {
+    matchesPlayed,
+    players,
+    activeQueues,
+    disputes,
+    unconfirmed,
+    penaltyShootouts,
+    draws,
+    avgGoals: avgGoals ? Number(avgGoals).toFixed(2) : "0.00",
+    maxWinMargin,
+    recentMatches,
+    mostActivePlayer,
+    topPlayers,
+    avgMatchesPerPlayer: avgMatchesPerPlayer ? Number(avgMatchesPerPlayer).toFixed(2) : "0.00"
+  };
+}
+
 module.exports = {
   createMatch,
   deleteMatch,
@@ -422,5 +485,6 @@ module.exports = {
   getMatchById,
   createMatchThread,
   confirmMatch,
-  getRankByUserID
+  getRankByUserID,
+  getLadderStats
 };

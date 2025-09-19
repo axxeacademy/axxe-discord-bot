@@ -108,6 +108,17 @@ async function notifyLadderAdmins(thread, message) {
   return notifyLadderAdminsGeneric(thread, message);
 }
 
+/**
+ * Check if a Discord member is an admin (has any of the admin role IDs)
+ * @param {GuildMember} member
+ * @returns {boolean}
+ */
+function isAdmin(member) {
+  const adminRoleIds = config.discord?.ladderAdminRoleIds || [];
+  if (!member || !member.roles || !member.roles.cache) return false;
+  return adminRoleIds.some(roleId => member.roles.cache.has(roleId));
+}
+
 module.exports = {
   // Generic + alias
   notifyLadderAdminsGeneric,
@@ -117,4 +128,7 @@ module.exports = {
   notifyLadderAdminsNewGame,
   notifyLadderAdminsDisputeOpened,
   notifyLadderAdminsDisputeResolved,
+
+  // Admin check
+  isAdmin,
 };

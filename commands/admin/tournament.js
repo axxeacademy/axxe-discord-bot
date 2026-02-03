@@ -84,6 +84,62 @@ module.exports = {
                 // Pass interaction.channel so the service can create threads here!
                 await tournamentService.startCompetition(compId, interaction.channel);
                 return interaction.editReply(`🚀 Torneio #${compId} iniciado! A bracket foi gerada.`);
+
+            } else if (subcommand === 'status') {
+                const compId = interaction.options.getInteger('competition_id');
+
+                // Fetch basic info
+                const [compRows] = await require('../../utils/db').execute('SELECT * FROM competitions WHERE id = ?', [compId]);
+                if (!compRows.length) return interaction.editReply('❌ Competição não encontrada.');
+                const comp = compRows[0];
+
+                // Fetch matches
+                const [matches] = await require('../../utils/db').execute(
+                    `SELECT tm.*, 
+                            u1.gamertag as p1name, u2.gamertag as p2name 
+                     FROM tournament_matches tm
+                     LEFT JOIN users u1 ON tm.player1_id = u1.id
+                     LEFT JOIN users u2 ON tm.player2_id = u2.id
+                     WHERE tm.competition_id = ? 
+                     ORDER BY tm.round ASC, tm.id ASC`,
+                    [compId]
+                );
+
+                if (!matches.length) return interaction.editReply(`ℹ️ A competição está em estado: **${comp.status}**, mas não há jogos gerados.`);
+
+                // Build Summary
+                let statusMsg = `**🏆 ${comp.name}** (Estado: ${comp.status})\n\n`;
+
+                // Group by rounds
+                const rounds = {};
+                matches.forEach(m => {
+                    const rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round} (${m.bracket_side === 'losers' ? 'Losers' : 'Winners'})`;
+                    if (!rounds[rName]) rounds[rName] = [];
+                    rounds[rName].push(m);
+                });
+
+                for (const [rName, ms] of Object.entries(rounds)) {
+                    statusMsg += `__${rName}__\n`;
+                    ms.forEach(m => {
+                        const p1 = m.p1name || 'TBD';
+                        const p2 = m.p2name || 'TBD';
+                        const score = (m.status === 'completed' || m.status === 'pending_confirmation')
+                            ? `**${m.player1_score} - ${m.player2_score}**`
+                            : 'vs';
+
+                        let icon = '📅';
+                        if (m.status === 'completed') icon = '✅';
+                        else if (m.status === 'pending_confirmation') icon = '⏳';
+                        else if (m.status === 'scheduled') icon = '📅';
+
+                        statusMsg += `\`#${m.id}\` ${icon} ${p1} ${score} ${p2}\n`;
+                    });
+                    statusMsg += '\n';
+                }
+
+                if (statusMsg.length > 2000) statusMsg = statusMsg.substring(0, 1990) + '...';
+
+                return interaction.editReply(statusMsg);
             }
 
         } catch (error) {

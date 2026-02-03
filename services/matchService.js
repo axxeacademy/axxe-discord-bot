@@ -385,10 +385,20 @@ async function createMatchThread(
   matchId,
   player1Gamertag,
   player2Gamertag,
-  type = 'ladder' // Default param
+  type = 'ladder', // Default param
+  edition = null,  // [NEW]
+  roundSlug = null // [NEW]
 ) {
   const channel = interactionOrChannel.threads ? interactionOrChannel : interactionOrChannel.channel;
-  const threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
+
+  // [NEW] Naming Standard: "EDITION | ROUND - P1 vs P2"
+  // Fallback for Ladder: "Match #ID - P1 vs P2"
+  let threadTitle;
+  if (type === 'tournament' && edition && roundSlug) {
+    threadTitle = `${edition} | ${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+  } else {
+    threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
+  }
 
   const thread = await channel.threads.create({
     name: threadTitle,
@@ -406,7 +416,7 @@ async function createMatchThread(
 
   await notifyLadderAdminsNewGame(thread, threadTitle);
 
-  await thread.send(`Jogo #${matchId} iniciado entre <@${player1DiscordId}> e <@${player2DiscordId}>.`);
+  await thread.send(`Jogo #${matchId} iniciado entre ${player1DiscordId ? `<@${player1DiscordId}>` : player1Gamertag} e ${player2DiscordId ? `<@${player2DiscordId}>` : player2Gamertag}.`);
   await thread.send('Use `/reportmatch` para reportar o resultado do jogo quando terminar.');
 
   return thread;

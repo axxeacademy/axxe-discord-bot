@@ -23,6 +23,7 @@ module.exports = {
                             { name: 'Single Elimination', value: 'single_elimination' }
                         )
                 )
+                .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #03)').setRequired(false))
         )
         .addSubcommand(sub =>
             sub
@@ -56,10 +57,11 @@ module.exports = {
                 const name = interaction.options.getString('name');
                 const slug = interaction.options.getString('slug');
                 const format = interaction.options.getString('format');
+                const edition = interaction.options.getString('edition') || null;
 
-                const id = await tournamentService.createCompetition(name, slug, 'tournament', format, { created_by: interaction.user.id });
+                const id = await tournamentService.createCompetition(name, slug, 'tournament', format, { created_by: interaction.user.id }, edition);
 
-                return interaction.editReply(`✅ Competição "${name}" criada com ID: **${id}**`);
+                return interaction.editReply(`✅ Competição "${name}" criada com ID: **${id}**${edition ? ` (Edição ${edition})` : ''}`);
 
             } else if (subcommand === 'register') {
                 const compId = interaction.options.getInteger('competition_id');
@@ -114,7 +116,14 @@ module.exports = {
                 // Group by rounds
                 const rounds = {};
                 matches.forEach(m => {
-                    const rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round} (${m.bracket_side === 'losers' ? 'Losers' : 'Winners'})`;
+                    let rName = '';
+                    if (m.round_slug) {
+                        rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round_slug}`;
+                    } else {
+                        // Fallback
+                        rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round} (${m.bracket_side === 'losers' ? 'Losers' : 'Winners'})`;
+                    }
+
                     if (!rounds[rName]) rounds[rName] = [];
                     rounds[rName].push(m);
                 });
@@ -122,8 +131,8 @@ module.exports = {
                 for (const [rName, ms] of Object.entries(rounds)) {
                     statusMsg += `__${rName}__\n`;
                     ms.forEach(m => {
-                        const p1 = m.p1name || 'TBD';
-                        const p2 = m.p2name || 'TBD';
+                        const p1 = m.p1name || 'BYE'; // Map null to BYE if status implies? Or just null.
+                        const p2 = m.p2name || 'BYE';
                         const score = (m.status === 'completed' || m.status === 'pending_confirmation')
                             ? `**${m.player1_score} - ${m.player2_score}**`
                             : 'vs';

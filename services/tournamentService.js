@@ -325,7 +325,7 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
                 // So we DO create the thread, but auto-win it immediately? 
                 // Let's create the thread, then immediately process win.
                 if (channel) {
-                    await checkAndCreateThread(channel, matchId).then(async () => {
+                    await checkAndCreateThread(channel, matchId, true).then(async () => {
                         // After thread creation, auto-win
                         // Wait, checkAndCreateThread logic needs update to handle BYE vs Player
                         await processTournamentMatchResult(matchId, winnerId, channel);
@@ -344,8 +344,19 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
 /**
  * Check if match has both players and create thread if so.
  */
-async function checkAndCreateThread(channel, matchId) {
-    console.log(`[Tournament] Checking thread creation for match ${matchId} in channel ${channel?.id}`);
+async function checkAndCreateThread(channel, matchId, isInitialBye = false) {
+    console.log(`[Tournament] Checking thread creation for match ${matchId}. InitialBye=${isInitialBye}`);
+
+    // Lazy load
+    const matchService = require('./matchService');
+
+    // [NEW] Check Duplication explicitly
+    const hasThread = await matchService.isThreadRegistered(matchId, 'tournament');
+    if (hasThread) {
+        console.log(`[Tournament] Match ${matchId} already has a thread. Skipping.`);
+        return;
+    }
+
     const [rows] = await execute(
         `SELECT tm.*, c.edition 
          FROM tournament_matches tm 
@@ -355,18 +366,15 @@ async function checkAndCreateThread(channel, matchId) {
     );
     if (!rows.length) return;
     const match = rows[0];
+    console.log(`[Tournament] Match data for ${matchId}: Edition=${match.edition}, Slug=${match.round_slug}`);
 
-    // Determine P1 and P2 details
-    // Phase 2: Handle BYE
     const p1Id = match.player1_id;
     const p2Id = match.player2_id;
 
-    // If completed (e.g. BYE auto-win), maybe don't create thread?
-    // User asked for "PLAYER vs BYE" thread.
-    // So we proceed if at least one player exists and the other is NULL (Bye).
-    // Or both exist.
+    // [NEW] CONDITION: Require both players UNLESS it's an initial seed-BYE
+    const canCreate = (p1Id && p2Id) || (isInitialBye && (p1Id || p2Id));
 
-    if (p1Id || p2Id) {
+    if (canCreate) {
         const p1 = await getUserDetails(p1Id);
         const p2 = await getUserDetails(p2Id);
 
@@ -375,10 +383,6 @@ async function checkAndCreateThread(channel, matchId) {
         const p1Discord = p1 ? p1.discord_id : null;
         const p2Discord = p2 ? p2.discord_id : null;
 
-        // Check if we already have a thread? (Not tracked locally, assume matchService handles duplicate check/return)
-
-        // Lazy load
-        const matchService = require('./matchService');
         if (matchService.createMatchThread) {
             try {
                 await matchService.createMatchThread(
@@ -389,14 +393,16 @@ async function checkAndCreateThread(channel, matchId) {
                     p1Name,
                     p2Name,
                     'tournament',
-                    match.edition,      // Phase 2
-                    match.round_slug    // Phase 2
+                    match.edition,
+                    match.round_slug
                 );
                 console.log(`[Tournament] Thread created for match ${matchId}`);
             } catch (err) {
                 console.error(`[Tournament] FAILED to create thread for match ${matchId}:`, err);
             }
         }
+    } else {
+        console.log(`[Tournament] Match ${matchId} waiting for both players. Slots: [${p1Id}, ${p2Id}]`);
     }
 }
 

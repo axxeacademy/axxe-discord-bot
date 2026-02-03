@@ -31,6 +31,17 @@ async function getMatchContext(threadId) {
   }
 }
 
+// [NEW] Helper to check if a match already has a thread
+async function isThreadRegistered(matchId, type) {
+  try {
+    const [rows] = await execute('SELECT thread_id FROM match_threads WHERE match_id = ? AND match_type = ?', [matchId, type]);
+    return rows.length > 0;
+  } catch (err) {
+    console.error('Failed to check thread registration:', err);
+    return false;
+  }
+}
+
 function calculateEloAdvanced({
   playerRating,
   opponentRating,
@@ -273,7 +284,7 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
 
       // Get Discord IDs and gamertags
       const [player1DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player1_id]);
-      const [player2DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player2_id]);
+      const [player2DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player1_id]);
       const player1Id = player1DiscordRows[0]?.discord_id;
       const player2Id = player2DiscordRows[0]?.discord_id;
       const player1Gamertag = player1DiscordRows[0]?.gamertag || 'Unknown';
@@ -385,17 +396,36 @@ async function createMatchThread(
   matchId,
   player1Gamertag,
   player2Gamertag,
-  type = 'ladder', // Default param
-  edition = null,  // [NEW]
-  roundSlug = null // [NEW]
+  type = 'ladder',
+  edition = null,
+  roundSlug = null
 ) {
   const channel = interactionOrChannel.threads ? interactionOrChannel : interactionOrChannel.channel;
 
-  // [NEW] Naming Standard: "EDITION | ROUND - P1 vs P2"
-  // Fallback for Ladder: "Match #ID - P1 vs P2"
   let threadTitle;
-  if (type === 'tournament' && edition && roundSlug) {
-    threadTitle = `${edition} | ${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+  // [NEW] Enforce stricter logic and format edition
+  const isTournament = (type === 'tournament');
+
+  if (isTournament && roundSlug) {
+    // Format edition to ensure it starts with #
+    let editionPart = '';
+    if (edition) {
+      editionPart = String(edition);
+      if (!editionPart.startsWith('#')) {
+        // Prepend # and pad if it's a short string like "3" -> "#03"?
+        // Simplest is to just prepend # if missing.
+        if (/^\d+$/.test(editionPart) && editionPart.length < 2) {
+          editionPart = `#0${editionPart}`;
+        } else if (/^\d+$/.test(editionPart)) {
+          editionPart = `#${editionPart}`;
+        } else if (!editionPart.startsWith('#')) {
+          editionPart = `${editionPart}`; // maybe it's "Cup 1"
+        }
+      }
+      threadTitle = `${editionPart} | ${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+    } else {
+      threadTitle = `${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+    }
   } else {
     threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
   }
@@ -404,16 +434,14 @@ async function createMatchThread(
     name: threadTitle,
     autoArchiveDuration: 60,
     reason: 'Match thread created',
-    type: 12, // ChannelType.PrivateThread
+    type: 12,
   });
 
   if (thread.joinable) {
     try { await thread.join(); } catch { }
   }
 
-  // [NEW] Register the thread map
   await registerMatchThread(thread.id, matchId, type);
-
   await notifyLadderAdminsNewGame(thread, threadTitle);
 
   await thread.send(`Jogo #${matchId} iniciado entre ${player1DiscordId ? `<@${player1DiscordId}>` : player1Gamertag} e ${player2DiscordId ? `<@${player2DiscordId}>` : player2Gamertag}.`);
@@ -533,5 +561,6 @@ module.exports = {
   getRankByUserID,
   getLadderStats,
   registerMatchThread,
-  getMatchContext
+  getMatchContext,
+  isThreadRegistered
 };

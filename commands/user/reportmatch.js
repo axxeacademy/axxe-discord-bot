@@ -61,30 +61,54 @@ module.exports = {
       let isTournament = false;
       let match = null;
 
-      // 1. Try LADDER
+      // Conflict Resolution Logic
+      // 1. Fetch potential Ladder Match
+      let ladderMatch = null;
       if (ladderId) {
-        const [matchRows] = await execute(
-          'SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?',
-          [matchId, ladderId]
-        );
-        if (matchRows.length > 0) {
-          match = matchRows[0];
-        }
+        const [lRows] = await execute('SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?', [matchId, ladderId]);
+        if (lRows.length > 0) ladderMatch = lRows[0];
       }
 
-      // 2. Try TOURNAMENT if not found
-      if (!match) {
-        const [tRows] = await execute(
-          'SELECT * FROM tournament_matches WHERE id = ?',
-          [matchId]
-        );
-        if (tRows.length > 0) {
-          match = tRows[0];
+      // 2. Fetch potential Tournament Match
+      let tournamentMatch = null;
+      const [tRows] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [matchId]);
+      if (tRows.length > 0) tournamentMatch = tRows[0];
+
+      // 3. Priority Logic
+      // If both exist, we prioritize the ACTIVE one.
+      // If tournament match is active (scheduled/pending), use it.
+      // If tournament match is completed, but ladder is pending... use ladder?
+      // Generally, a new thread implies user wants the new match.
+
+      if (ladderMatch && tournamentMatch) {
+        const tActive = (tournamentMatch.status === 'scheduled' || tournamentMatch.status === 'pending_confirmation');
+        const lActive = (ladderMatch.status === 'pending');
+
+        if (tActive && !lActive) {
+          match = tournamentMatch;
+          isTournament = true;
+        } else if (!tActive && lActive) {
+          match = ladderMatch;
+          isTournament = false;
+        } else if (tActive && lActive) {
+          // Both active. Ambiguous.
+          // Prefer Tournament if this feels like a tournament flow? 
+          // Hard to say. Default to Tournament as it's the specific overriding context.
+          match = tournamentMatch;
+          isTournament = true;
+        } else {
+          // Both inactive.
+          // Default to Tournament to show "completed" message if checking history?
+          match = tournamentMatch;
           isTournament = true;
         }
-      }
-
-      if (!match) {
+      } else if (tournamentMatch) {
+        match = tournamentMatch;
+        isTournament = true;
+      } else if (ladderMatch) {
+        match = ladderMatch;
+        isTournament = false;
+      } else {
         return interaction.editReply({ content: '❌ Jogo não encontrado.' });
       }
 
@@ -242,16 +266,28 @@ module.exports = {
         clearInterval(interval);
         const matchService = require('../../services/matchService'); // Lazy load
 
+        // RE-CHECK STATUS USING SAME LOGIC
+        // We know ID, but is it tournament or ladder?
+        // We saved which it was earlier, but callbacks only see ID.
+        // We must re-infer.
+        // To be SAFE, verify Tournament First here.
+
         let currentStatus = null;
-        if (isTournament) {
-          const [m] = await execute('SELECT status FROM tournament_matches WHERE id = ?', [matchId]);
-          currentStatus = m?.status; // 'pending_confirmation'
+        let isTourn = false;
+
+        const [tm] = await execute('SELECT status FROM tournament_matches WHERE id = ?', [matchId]);
+
+        if (tm && (tm.status === 'pending_confirmation' || tm.status === 'scheduled')) {
+          currentStatus = tm.status;
+          isTourn = true;
         } else {
-          const [m] = await execute('SELECT status FROM ladder_matches WHERE id = ?', [matchId]);
-          currentStatus = m?.status; // 'pending'
+          // Fallback to ladder
+          const [lm] = await execute('SELECT status FROM ladder_matches WHERE id = ?', [matchId]);
+          currentStatus = lm?.status;
+          isTourn = false;
         }
 
-        if ((isTournament && currentStatus === 'pending_confirmation') || (!isTournament && currentStatus === 'pending')) {
+        if ((isTourn && currentStatus === 'pending_confirmation') || (!isTourn && currentStatus === 'pending')) {
           const successRes = await matchService.confirmMatch(client, matchId, ladderId, thread, { source: 'auto' });
           try {
             if (successRes && successRes.ok) {

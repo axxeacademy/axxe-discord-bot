@@ -1,5 +1,4 @@
 // services/matchService.js
-// services/matchService.js
 require('dotenv').config();
 const { execute } = require('../utils/db');
 const { EmbedBuilder } = require('discord.js');
@@ -83,41 +82,48 @@ async function confirmMatch(client, matchId, ladderId, thread, options = {}) {
   const { source = 'auto', confirmer } = options;
 
   try {
-    // 1. Try LADDER MATCH (standard)
-    let [matchRows] = await execute(
-      'SELECT * FROM ladder_matches WHERE id = ? AND status = ?',
-      [matchId, 'pending']
-    );
+    let matchRows = [];
+    if (ladderId) {
+      [matchRows] = await execute(
+        'SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ? AND status = ?',
+        [matchId, ladderId, 'pending']
+      );
+    }
 
     // Check if tournament match if not found in ladder (Or if passed logic implies it)
     let isTournament = false;
     let tourneyMatch = null;
 
     if (matchRows.length === 0) {
-      // Double check status conflict
-      const [existing] = await execute('SELECT * FROM ladder_matches WHERE id = ?', [matchId]);
-      if (existing.length > 0) {
-        if (existing[0].status === 'disputed') return { ok: false, code: 'disputed' };
-        if (existing[0].status === 'confirmed') return { ok: false, code: 'confirmed' };
-        if (existing[0].status !== 'pending') return { ok: false, code: 'not_found' };
+      // Double check status conflict in LADDER (only if ladderId is relevant)
+      if (ladderId) {
+        const [existing] = await execute('SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?', [matchId, ladderId]);
+        if (existing.length > 0) {
+          if (existing[0].status === 'disputed') return { ok: false, code: 'disputed' };
+          if (existing[0].status === 'confirmed') return { ok: false, code: 'confirmed' };
+          if (existing[0].status !== 'pending') return { ok: false, code: 'not_found' };
+        }
       }
 
-      // Try TOURNAMENT MATCH
+      // Try TOURNAMENT MATCH (regardless of ladderId, but prioritized if ladderId missed)
       // Status enum: scheduled, pending_confirmation, completed, disputed
       const [tRows] = await execute(
-        'SELECT * FROM tournament_matches WHERE id = ? AND status = ?',
-        [matchId, 'pending_confirmation']
+        'SELECT * FROM tournament_matches WHERE id = ?',
+        [matchId]
       );
+
+      // Filter for valid confirm status
       if (tRows.length > 0) {
-        isTournament = true;
-        tourneyMatch = tRows[0];
-      } else {
-        // Check tournament conflicts
-        const [texisting] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [matchId]);
-        if (texisting.length > 0) {
-          if (texisting[0].status === 'completed') return { ok: false, code: 'confirmed' };
-          // etc
+        const tm = tRows[0];
+        if (tm.status === 'pending_confirmation') {
+          isTournament = true;
+          tourneyMatch = tm;
+        } else if (tm.status === 'completed') {
+          return { ok: false, code: 'confirmed' };
+        } else if (tm.status === 'scheduled') {
+          return { ok: false, code: 'pending' }; // Needs report first
         }
+      } else {
         return { ok: false, code: 'not_found' };
       }
     }

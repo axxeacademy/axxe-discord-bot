@@ -155,6 +155,7 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
  * Check if match has both players and create thread if so.
  */
 async function checkAndCreateThread(channel, matchId) {
+    console.log(`[Tournament] Checking thread creation for match ${matchId} in channel ${channel?.id}`);
     const [rows] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [matchId]);
     if (!rows.length) return;
     const match = rows[0];
@@ -164,24 +165,35 @@ async function checkAndCreateThread(channel, matchId) {
     // Let's assume we won't double create for this iteration, or use logger.
 
     if (match.player1_id && match.player2_id) {
+        console.log(`[Tournament] Match ${matchId} has both players: ${match.player1_id} vs ${match.player2_id}`);
         const p1 = await getUserDetails(match.player1_id);
         const p2 = await getUserDetails(match.player2_id);
+
         if (p1 && p2) {
+            console.log(`[Tournament] Players found. Creating thread for ${p1.username} vs ${p2.username}`);
             // Lazy load matchService to avoid circular dependency
             const matchService = require('./matchService');
             if (matchService.createMatchThread) {
-                await matchService.createMatchThread(
-                    channel,
-                    p1.discord_id,
-                    p2.discord_id,
-                    matchId,
-                    p1.gamertag || p1.username,
-                    p2.gamertag || p2.username,
-                    'tournament' // [NEW] Explicit type
-                );
-                // Update status to pending_confirmation? No, keep scheduled until reported.
+                try {
+                    await matchService.createMatchThread(
+                        channel,
+                        p1.discord_id,
+                        p2.discord_id,
+                        matchId,
+                        p1.gamertag || p1.username,
+                        p2.gamertag || p2.username,
+                        'tournament' // [NEW] Explicit type
+                    );
+                    console.log(`[Tournament] Thread created for match ${matchId}`);
+                } catch (err) {
+                    console.error(`[Tournament] FAILED to create thread for match ${matchId}:`, err);
+                }
             }
+        } else {
+            console.log(`[Tournament] User details lookups failed for match ${matchId}. p1=${!!p1}, p2=${!!p2}`);
         }
+    } else {
+        console.log(`[Tournament] Match ${matchId} waiting for players. p1=${match.player1_id}, p2=${match.player2_id}`);
     }
 }
 

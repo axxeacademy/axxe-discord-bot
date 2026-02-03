@@ -96,7 +96,8 @@ module.exports = {
                 // Fetch matches
                 const [matches] = await require('../../utils/db').execute(
                     `SELECT tm.*, 
-                            u1.gamertag as p1name, u2.gamertag as p2name 
+                            COALESCE(u1.gamertag, u1.username) as p1name, 
+                            COALESCE(u2.gamertag, u2.username) as p2name 
                      FROM tournament_matches tm
                      LEFT JOIN users u1 ON tm.player1_id = u1.id
                      LEFT JOIN users u2 ON tm.player2_id = u2.id

@@ -96,13 +96,6 @@ function calculateEloAdvanced({
 
 /**
  * Confirm a match (auto or manual).
- * @param {Client} client
- * @param {number} inputMatchId - Optional if thread context exists
- * @param {number} ladderId
- * @param {ThreadChannel} thread
- * @param {Object} options
- * @param {'auto'|'manual'} [options.source='auto']
- * @param {string} [options.confirmer]
  */
 async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}) {
   const { source = 'auto', confirmer } = options;
@@ -121,12 +114,10 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       }
     }
 
-    // Fallbacks if no context (Legacy support or manual call without thread context?)
+    // Fallbacks
     if (!type) {
       if (ladderId) type = 'ladder';
       else {
-        // Fallback: Check if it exists in tournament table first?
-        // Or fail?
         console.warn(`[confirmMatch] No context found for match ${matchId} in thread ${thread?.id}. Defaulting to ladder check.`);
         type = 'ladder';
       }
@@ -166,7 +157,9 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       else if (match.player2_score > match.player1_score) winnerId = match.player2_id;
       else return { ok: false, code: 'draw_not_allowed' };
 
-      await tournamentService.processTournamentMatchResult(matchId, winnerId);
+      // [FIX] Pass thread.parent so next match thread can be created
+      const contextChannel = thread ? thread.parent : null;
+      await tournamentService.processTournamentMatchResult(matchId, winnerId, contextChannel);
 
       const embed = new EmbedBuilder()
         .setTitle(`🏆 Jogo de Torneio #${matchId} Confirmado`)
@@ -181,12 +174,10 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       return { ok: true };
     } else {
       // --- LADDER LOGIC ---
-      // Must be reported to be confirmed
       if (!match.reported_by) {
         return { ok: false, code: 'pending' };
       }
 
-      // Fetch player stats
       const [playerStats] = await execute(
         'SELECT * FROM ladder_player_stats WHERE player_id IN (?, ?) AND ladder_id = ?',
         [match.player1_id, match.player2_id, match.ladder_id || ladderId]
@@ -198,7 +189,6 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
         console.error(`Missing stats for players in match ${matchId}`);
       }
 
-      // Determine draw/winner (penalties decisive)
       const hasPenalty = (match.penalty_score1 !== null && match.penalty_score2 !== null);
       const penaltyScoresValid = hasPenalty && (match.penalty_score1 !== 0 || match.penalty_score2 !== 0);
       const isDraw = match.player1_score === match.player2_score && !penaltyScoresValid;
@@ -289,7 +279,7 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       const player1Gamertag = player1DiscordRows[0]?.gamertag || 'Unknown';
       const player2Gamertag = player2DiscordRows[0]?.gamertag || 'Unknown';
 
-      // Resolve proper guild members for mentions
+      // Utils
       const guild = thread.guild;
       async function getMemberPack(id) {
         if (!id) return { member: null, name: 'Unknown', tag: 'unknown', mention: '`unknown`', id: null };
@@ -306,7 +296,6 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       const p1 = await getMemberPack(player1Id);
       const p2 = await getMemberPack(player2Id);
 
-      // Score line
       const scoreLine = (match.penalty_score1 !== null && match.penalty_score2 !== null)
         ? `**${player1Gamertag}** **${match.player1_score}** (${match.penalty_score1}) – (${match.penalty_score2}) **${match.player2_score}** **${player2Gamertag}**`
         : `**${player1Gamertag}** **${match.player1_score}** – **${match.player2_score}** **${player2Gamertag}**`;

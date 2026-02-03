@@ -176,7 +176,8 @@ async function checkAndCreateThread(channel, matchId) {
                     p2.discord_id,
                     matchId,
                     p1.gamertag || p1.username,
-                    p2.gamertag || p2.username
+                    p2.gamertag || p2.username,
+                    'tournament' // [NEW] Explicit type
                 );
                 // Update status to pending_confirmation? No, keep scheduled until reported.
             }

@@ -38,7 +38,7 @@ module.exports = {
       }
     }
 
-    // Ladder resolution
+    // Ladder resolution (Optional now)
     let ladderId = null;
     try {
       if (thread.isThread()) {
@@ -48,15 +48,9 @@ module.exports = {
     } catch (e) {
       console.error('ladder id error:', e);
     }
-    if (!ladderId) {
-      if (deferred) {
-        return interaction.editReply({
-          content: languageService.getMessage('pt-PT', 'command_not_in_channel'),
-        });
-      } else {
-        return;
-      }
-    }
+
+    // [MODIFIED] Do not enforce ladderId here. MatchService handles context resolution.
+    // If it's a tournament match, ladderId will be null and that's fine.
 
     // Parse match id from thread name
     const m = thread.name.match(/match\s*#(\d+)/i);
@@ -72,7 +66,6 @@ module.exports = {
     }
 
     try {
-      // Let matchService handle atomic confirm logic
       const confirmerDiscordId = interaction.user.id;
       const confirmerGamertag = await getGamertagByDiscordId(confirmerDiscordId);
       const confirmerName =
@@ -82,6 +75,7 @@ module.exports = {
         interaction.user.username;
 
       // Fetch match details to get reporter info
+      // [NOTE] getMatchById in service now checks both tables too!
       let matchDetails = await matchService.getMatchById(matchId);
       if (!matchDetails) {
         if (deferred) {
@@ -93,13 +87,10 @@ module.exports = {
 
       // Prevent reporter from confirming unless they have an admin role
       if (matchDetails.reported_by_discord_id && String(matchDetails.reported_by_discord_id) === String(confirmerDiscordId)) {
-        // Get admin role IDs from config
         const adminRoleIds = config.discord.ladderAdminRoleIds || [];
-        // Get the user's roles (as a Set of role IDs)
         const userRoleIds = interaction.member?.roles?.cache
           ? Array.from(interaction.member.roles.cache.keys())
           : [];
-        // Check if user has any admin role
         const isAdmin = userRoleIds.some((roleId) => adminRoleIds.includes(roleId));
         if (!isAdmin) {
           if (deferred) {
@@ -123,8 +114,10 @@ module.exports = {
           result?.code === 'confirmed'
             ? '✅ Este jogo já foi confirmado.'
             : result?.code === 'disputed'
-            ? '⚠️ Este jogo está em disputa. Um admin já foi notificado e resolverá o problema assim que possível.'
-            : '❌ Falha na confirmação do jogo..';
+              ? '⚠️ Este jogo está em disputa. Um admin já foi notificado e resolverá o problema assim que possível.'
+              : (result?.code === 'not_found')
+                ? '❌ Jogo não encontrado no contexto atual.'
+                : '❌ Falha na confirmação do jogo..';
         if (deferred) {
           return interaction.editReply({ content: msg });
         } else {
@@ -138,85 +131,6 @@ module.exports = {
         if (timers.interval) clearInterval(timers.interval);
         if (timers.timeout) clearTimeout(timers.timeout);
         confirmationTimers.delete(thread.id);
-      }
-
-      // Fetch match details for logging
-      matchDetails = await matchService.getMatchById(matchId);
-      if (!matchDetails) {
-        console.warn(`confirmmatch: match ${matchId} confirmed but details not found`);
-        if (deferred) {
-          return interaction.editReply({ content: '✅ Jogo confirmado com sucesso.' });
-        } else {
-          return;
-        }
-      }
-
-      // Robust Elo logging: join back to match so we know which row belongs to who
-      const [eloRows] = await db.execute(
-        `
-        SELECT
-          leh.player_id,
-          leh.delta,
-          leh.new_elo,
-          CASE
-            WHEN leh.player_id = lm.player1_id THEN 'player1'
-            WHEN leh.player_id = lm.player2_id THEN 'player2'
-            ELSE 'other'
-          END AS slot
-        FROM ladder_elo_history leh
-        JOIN ladder_matches lm ON lm.id = leh.match_id
-        WHERE leh.match_id = ?
-        ORDER BY leh.id DESC
-        `,
-        [matchId]
-      );
-
-      const bySlot = {};
-      for (const row of eloRows) {
-        if (!bySlot[row.slot]) bySlot[row.slot] = row; // take latest per slot
-      }
-      const eloGain = {
-        player1: bySlot.player1?.delta ?? null,
-        player2: bySlot.player2?.delta ?? null,
-      };
-      const currentElo = {
-        player1: bySlot.player1?.new_elo ?? null,
-        player2: bySlot.player2?.new_elo ?? null,
-      };
-
-      // Get both players with one query
-      const [players] = await db.execute(
-        `SELECT id, gamertag, username AS discordUsername, discord_id AS discordUserId
-         FROM users WHERE id IN (?, ?)`,
-        [matchDetails.player1_id, matchDetails.player2_id]
-      );
-      const player1 =
-        players.find((p) => p.id === matchDetails.player1_id) || {
-          gamertag: 'Unknown',
-          discordUsername: 'Unknown',
-          discordUserId: null,
-        };
-      const player2 =
-        players.find((p) => p.id === matchDetails.player2_id) || {
-          gamertag: 'Unknown',
-          discordUsername: 'Unknown',
-          discordUserId: null,
-        };
-
-      // Log command (non-fatal if it fails)
-      try {
-        await logCommand(interaction, `Match #${matchId} confirmed manually by ${confirmerName}`, {
-          threadId: thread.id,
-          threadName: thread.name,
-          matchResult: {
-            result: `${player1.gamertag} ${matchDetails.player1_score} - ${matchDetails.player2_score} ${player2.gamertag}`,
-            eloGain,
-            currentElo,
-          },
-          matchInfo: { player1, player2, threadId: thread.id },
-        });
-      } catch (logErr) {
-        console.warn('Non-fatal: logCommand failed in /confirmmatch:', logErr);
       }
 
       if (deferred) {

@@ -1,11 +1,10 @@
 // commands/user/reportmatch.js
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageFlags } = require('discord.js');
-const { EmbedBuilder } = require('discord.js');
-const { execute } = require('../../utils/db'); // ✅ pooled db helpers
+const { execute } = require('../../utils/db');
 const { logCommand } = require('../../utils/logger');
+const matchService = require('../../services/matchService'); // [NEW] Import service for context
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
-const languageService = require('../../services/languageService');
 const { buildMatchEmbed } = require('../../services/matchMessages');
 
 const confirmationTimers = new Map();
@@ -14,7 +13,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('reportmatch')
     .setDescription('Reportar o resultado de um jogo contra outro jogador.')
-    .setDMPermission(false) // Explicitly disallow DMs, allow in guild threads
+    .setDMPermission(false)
     .addIntegerOption(option =>
       option.setName('yourscore').setDescription('O seu resultado').setRequired(true))
     .addIntegerOption(option =>
@@ -25,10 +24,7 @@ module.exports = {
       option.setName('penaltyscore2').setDescription('Pontuação de penalidade do jogador 2 (opcional)').setRequired(false)),
 
   async execute(interaction) {
-    // Log time between interaction creation and handler execution
     const now = Date.now();
-
-    // Always defer reply at the start
     await interaction.deferReply();
 
     try {
@@ -36,15 +32,19 @@ module.exports = {
         return interaction.editReply({ content: '❌ Este comando só pode ser usado em threads.' });
       }
 
-      let ladderId = null;
-      try {
-        if (interaction.channel.isThread()) ladderId = await getLadderIdByChannel(interaction.channel.parentId);
-        if (!ladderId) ladderId = await getLadderIdByChannel(interaction.channel.id);
-      } catch { }
+      // [NEW] Resolve Context via MatchService
+      const matchContext = await matchService.getMatchContext(interaction.channel.id);
 
       const matchIdMatch = interaction.channel.name.match(/^Match #(\d+)/i) || interaction.channel.name.match(/match\s*#(\d+)/i);
       const matchId = matchIdMatch ? parseInt(matchIdMatch[1]) : NaN;
-      if (!matchId) return interaction.editReply({ content: '❌ Não foi possível identificar o ID do jogo pelo nome da thread.' });
+
+      if (!matchContext && !matchId) {
+        return interaction.editReply({ content: '❌ Não foi possível identificar o ID do jogo.' });
+      }
+
+      // Fallback ID if context missing (migration period)
+      const finalMatchId = matchContext ? matchContext.matchId : matchId;
+      const type = matchContext ? matchContext.type : 'ladder'; // Default to ladder if unknown (Legacy)
 
       const score1 = interaction.options.getInteger('yourscore');
       const score2 = interaction.options.getInteger('opponentscore');
@@ -57,73 +57,47 @@ module.exports = {
       let penaltyScore1 = norm(penaltyScore1Raw);
       let penaltyScore2 = norm(penaltyScore2Raw);
 
-      // --- IDENTIFY MATCH TYPE ---
-      let isTournament = false;
+      // Fetch Match Data
       let match = null;
+      let isTournament = (type === 'tournament');
+      let ladderId = null;
 
-      // Conflict Resolution Logic
-      // 1. Fetch potential Ladder Match
-      let ladderMatch = null;
-      if (ladderId) {
-        const [lRows] = await execute('SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?', [matchId, ladderId]);
-        if (lRows.length > 0) ladderMatch = lRows[0];
+      if (isTournament) {
+        const [rows] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [finalMatchId]);
+        if (rows.length > 0) match = rows[0];
+      } else {
+        // Ladder lookup
+        // We might still need ladderId for updates, try to fetch it
+        try {
+          if (interaction.channel.isThread()) ladderId = await getLadderIdByChannel(interaction.channel.parentId);
+          if (!ladderId) ladderId = await getLadderIdByChannel(interaction.channel.id);
+        } catch { }
+
+        if (ladderId) {
+          const [rows] = await execute('SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?', [finalMatchId, ladderId]);
+          if (rows.length > 0) match = rows[0];
+        } else {
+          // Try open lookup?
+          const [rows] = await execute('SELECT * FROM ladder_matches WHERE id = ?', [finalMatchId]);
+          if (rows.length > 0) {
+            match = rows[0];
+            ladderId = match.ladder_id;
+          }
+        }
       }
 
-      // 2. Fetch potential Tournament Match
-      let tournamentMatch = null;
-      const [tRows] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [matchId]);
-      if (tRows.length > 0) tournamentMatch = tRows[0];
-
-      // 3. Priority Logic
-      // If both exist, we prioritize the ACTIVE one.
-      // If tournament match is active (scheduled/pending), use it.
-      // If tournament match is completed, but ladder is pending... use ladder?
-      // Generally, a new thread implies user wants the new match.
-
-      if (ladderMatch && tournamentMatch) {
-        const tActive = (tournamentMatch.status === 'scheduled' || tournamentMatch.status === 'pending_confirmation');
-        const lActive = (ladderMatch.status === 'pending');
-
-        if (tActive && !lActive) {
-          match = tournamentMatch;
-          isTournament = true;
-        } else if (!tActive && lActive) {
-          match = ladderMatch;
-          isTournament = false;
-        } else if (tActive && lActive) {
-          // Both active. Ambiguous.
-          // Prefer Tournament if this feels like a tournament flow? 
-          // Hard to say. Default to Tournament as it's the specific overriding context.
-          match = tournamentMatch;
-          isTournament = true;
-        } else {
-          // Both inactive.
-          // Default to Tournament to show "completed" message if checking history?
-          match = tournamentMatch;
-          isTournament = true;
-        }
-      } else if (tournamentMatch) {
-        match = tournamentMatch;
-        isTournament = true;
-      } else if (ladderMatch) {
-        match = ladderMatch;
-        isTournament = false;
-      } else {
+      if (!match) {
         return interaction.editReply({ content: '❌ Jogo não encontrado.' });
       }
 
       // --- VALIDATION AND UPDATES ---
 
-      // 🚫 Hard stop while disputed (exists in generic structure? YES in migration)
       if (match.status === 'disputed') {
         return interaction.editReply({
           content: '⚠️ Este jogo está **em disputa**. Não pode ser reportado novamente.\nUm administrador deve resolver o conflito.'
         });
       }
 
-      // Check confirmed
-      // Tournament uses 'completed' or 'pending_confirmation'. Ladder uses 'confirmed'.
-      const isConfirmed = isTournament ? (match.status === 'completed') : (match.status === 'confirmed');
       const isPending = isTournament ? (match.status === 'scheduled' || match.status === 'pending_confirmation') : (match.status === 'pending');
 
       if (!isPending) {
@@ -140,7 +114,6 @@ module.exports = {
 
       const isAdmin = interaction.member.permissions.has('Administrator');
 
-      // If reporter is not in DB and not admin, fail
       if (!me && !isAdmin) {
         return interaction.editReply({ content: '❌ Não está registado no sistema.' });
       }
@@ -161,19 +134,14 @@ module.exports = {
         penaltyScore2 = null;
       } else {
         if (penaltyScore1 === null || penaltyScore2 === null) {
-          return interaction.editReply({
-            content: '❌ Jogo empatado no tempo regulamentar. Tem de indicar as penalidades de ambos os jogadores.'
-          });
+          return interaction.editReply({ content: '❌ Jogo empatado no tempo regulamentar. Tem de indicar as penalidades.' });
         }
         if (penaltyScore1 === penaltyScore2) {
-          return interaction.editReply({
-            content: '❌ Empates não são permitidos. O resultado deve ser uma vitória ou derrota.'
-          });
+          return interaction.editReply({ content: '❌ Empates não são permitidos.' });
         }
       }
 
       // Prepare Update
-      // If reporter is Admin and NOT a player, we assume 'yourscore' = Player1, 'opponentscore' = Player2
       let realP1Score, realP2Score, realP1Pen, realP2Pen;
 
       if (isAdmin && !reporterIsPlayer1 && !reporterIsPlayer2) {
@@ -189,16 +157,14 @@ module.exports = {
       }
 
       if (isTournament) {
-        // TOURNAMENT UPDATE
         await execute(
           `UPDATE tournament_matches
              SET player1_score = ?, player2_score = ?, reported_by = ?, status = 'pending_confirmation', reported_at = NOW()
              WHERE id = ?`,
-          [realP1Score, realP2Score, reporterPlayerId || null, matchId]
+          [realP1Score, realP2Score, reporterPlayerId || null, finalMatchId]
         );
       } else {
-        // LADDER UPDATE
-        const values = [realP1Score, realP2Score, realP1Pen, realP2Pen, 'pending', reporterPlayerId, matchId, ladderId];
+        const values = [realP1Score, realP2Score, realP1Pen, realP2Pen, 'pending', reporterPlayerId, finalMatchId, ladderId];
         const [updateRes] = await execute(
           `UPDATE ladder_matches
              SET player1_score = ?, player2_score = ?, penalty_score1 = ?, penalty_score2 = ?, status = ?, reported_by = ?
@@ -210,15 +176,10 @@ module.exports = {
         }
       }
 
-      // Re-read for embed (Optional optimization skipped for safety)
-      // Retrieve opponent info (even if admin reported)
+      // Re-read for embed
       const targetOpponentId = opponentPlayerId || (reporterIsPlayer1 ? match.player2_id : match.player1_id);
-      const [[opp]] = await execute(
-        'SELECT id, gamertag, username, discord_id FROM users WHERE id = ?',
-        [targetOpponentId]
-      );
+      const [[opp]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [targetOpponentId]);
 
-      // Standardize data for embed builder
       const p1Gamertag = me?.id === match.player1_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 1');
       const p2Gamertag = me?.id === match.player2_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 2');
       const p1Mention = me?.id === match.player1_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p1Gamertag);
@@ -226,7 +187,7 @@ module.exports = {
 
       const embed = buildMatchEmbed({
         state: 'reported',
-        matchId,
+        matchId: finalMatchId,
         p1: { gamertag: p1Gamertag, mention: p1Mention },
         p2: { gamertag: p2Gamertag, mention: p2Mention },
         scores: { s1: realP1Score, s2: realP2Score, pen1: realP1Pen, pen2: realP2Pen },
@@ -235,12 +196,11 @@ module.exports = {
 
       await interaction.editReply({ embeds: [embed] });
 
-      // Notify opponent
       const mention = opp?.discord_id ? `<@${opp.discord_id}>` : (opp?.username || 'oponente');
       await interaction.channel.send(
-        `📝 O resultado do jogo foi reportado por <@${reporterDiscordId}>.\n\n` +
-        `Por favor, ${mention}, confirme o resultado usando o comando \`/confirmmatch\` nesta thread.\n\n` +
-        `Se não confirmar em 5 minutos, o resultado será confirmado automaticamente.`
+        `📝 O resultado do jogo foi reportado por <@${reporterDiscordId}>.\n` +
+        `Por favor, ${mention}, confirme o resultado usando \`/confirmmatch\`.\n` +
+        `Confirmação automática em 5 minutos.`
       );
 
       // --- Timer logic ---
@@ -264,61 +224,51 @@ module.exports = {
 
       const timeout = setTimeout(async () => {
         clearInterval(interval);
-        const matchService = require('../../services/matchService'); // Lazy load
-
-        // RE-CHECK STATUS USING SAME LOGIC
-        // We know ID, but is it tournament or ladder?
-        // We saved which it was earlier, but callbacks only see ID.
-        // We must re-infer.
-        // To be SAFE, verify Tournament First here.
 
         let currentStatus = null;
         let isTourn = false;
 
-        const [tm] = await execute('SELECT status FROM tournament_matches WHERE id = ?', [matchId]);
-
-        if (tm && (tm.status === 'pending_confirmation' || tm.status === 'scheduled')) {
-          currentStatus = tm.status;
+        // Re-check type using context or fallback
+        // We know finalMatchId and type/isTournament from above closure scope
+        // Re-read DB
+        if (isTournament) {
+          const [m] = await execute('SELECT status FROM tournament_matches WHERE id = ?', [finalMatchId]);
+          currentStatus = m?.status;
           isTourn = true;
         } else {
-          // Fallback to ladder
-          const [lm] = await execute('SELECT status FROM ladder_matches WHERE id = ?', [matchId]);
-          currentStatus = lm?.status;
+          const [m] = await execute('SELECT status FROM ladder_matches WHERE id = ?', [finalMatchId]);
+          currentStatus = m?.status;
           isTourn = false;
         }
 
         if ((isTourn && currentStatus === 'pending_confirmation') || (!isTourn && currentStatus === 'pending')) {
-          const successRes = await matchService.confirmMatch(client, matchId, ladderId, thread, { source: 'auto' });
+          const successRes = await matchService.confirmMatch(client, finalMatchId, ladderId, thread, { source: 'auto' });
           try {
             if (successRes && successRes.ok) {
-              await timerMessage.edit('✅ Jogo confirmado automaticamente pelo sistema após 5 minutos.');
+              await timerMessage.edit('✅ Jogo confirmado automaticamente.');
               try { if (!thread.archived) await thread.setArchived(true); } catch { }
             } else {
-              await timerMessage.edit('❌ Falha ao confirmar automaticamente o jogo.');
+              await timerMessage.edit('❌ Falha ao confirmar automaticamente.');
             }
           } catch { }
         } else if (currentStatus === 'disputed') {
-          try { await timerMessage.edit('⚠️ O jogo foi colocado em **disputa**. A confirmação automática foi cancelada.'); } catch { }
+          try { await timerMessage.edit('⚠️ Em disputa. Auto-confirm cancelado.'); } catch { }
         } else {
-          try { await timerMessage.edit('✅ Jogo já confirmado.'); } catch { }
+          try { await timerMessage.edit('✅ Já confirmado.'); } catch { }
         }
       }, 300000);
 
       confirmationTimers.set(thread.id, { interval, timeout });
 
-      // Logging
       await logCommand(
         interaction,
-        `${reporterTag} reported a match: ${score1} - ${score2}` + (score1 === score2 ? ` (pens: ${penaltyScore1}-${penaltyScore2})` : ''),
+        `${reporterTag} reported match ${finalMatchId}: ${score1}-${score2}`,
         { threadId: interaction.channel.id, threadName: interaction.channel.name }
       );
+
     } catch (err) {
       console.error('Erro ao processar /reportmatch:', err);
-      try {
-        await interaction.editReply({ content: '❌ Ocorreu um erro ao reportar o jogo.' });
-      } catch (e) {
-        console.error('Falha ao enviar mensagem de erro:', e);
-      }
+      try { await interaction.editReply({ content: '❌ Ocorreu um erro.' }); } catch (e) { }
     }
   }
 };

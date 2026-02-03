@@ -5,6 +5,32 @@ const { EmbedBuilder } = require('discord.js');
 const tournamentService = require('./tournamentService'); // NEW: Import tournament service
 const { notifyLadderAdminsNewGame } = require('../utils/notifyAdmins');
 
+// [NEW] Helper to register thread association
+async function registerMatchThread(threadId, matchId, type) {
+  try {
+    await execute(
+      'INSERT INTO match_threads (thread_id, match_id, match_type) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE match_id = ?, match_type = ?',
+      [threadId, matchId, type, matchId, type]
+    );
+  } catch (err) {
+    console.error('Failed to register match thread:', err);
+  }
+}
+
+// [NEW] Helper to get context from thread
+async function getMatchContext(threadId) {
+  try {
+    const [rows] = await execute('SELECT * FROM match_threads WHERE thread_id = ?', [threadId]);
+    if (rows.length > 0) {
+      return { matchId: rows[0].match_id, type: rows[0].match_type };
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to get match context:', err);
+    return null;
+  }
+}
+
 function calculateEloAdvanced({
   playerRating,
   opponentRating,
@@ -71,81 +97,80 @@ function calculateEloAdvanced({
 /**
  * Confirm a match (auto or manual).
  * @param {Client} client
- * @param {number} matchId
+ * @param {number} inputMatchId - Optional if thread context exists
  * @param {number} ladderId
  * @param {ThreadChannel} thread
  * @param {Object} options
  * @param {'auto'|'manual'} [options.source='auto']
  * @param {string} [options.confirmer]
  */
-async function confirmMatch(client, matchId, ladderId, thread, options = {}) {
+async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}) {
   const { source = 'auto', confirmer } = options;
 
   try {
-    let matchRows = [];
-    if (ladderId) {
-      [matchRows] = await execute(
-        'SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ? AND status = ?',
-        [matchId, ladderId, 'pending']
-      );
-    }
+    // 1. RESOLVE CONTEXT
+    let matchId = inputMatchId;
+    let type = null;
 
-    // Check if tournament match if not found in ladder (Or if passed logic implies it)
-    let isTournament = false;
-    let tourneyMatch = null;
-
-    if (matchRows.length === 0) {
-      // Double check status conflict in LADDER (only if ladderId is relevant)
-      if (ladderId) {
-        const [existing] = await execute('SELECT * FROM ladder_matches WHERE id = ? AND ladder_id = ?', [matchId, ladderId]);
-        if (existing.length > 0) {
-          if (existing[0].status === 'disputed') return { ok: false, code: 'disputed' };
-          if (existing[0].status === 'confirmed') return { ok: false, code: 'confirmed' };
-          if (existing[0].status !== 'pending') return { ok: false, code: 'not_found' };
-        }
-      }
-
-      // Try TOURNAMENT MATCH (regardless of ladderId, but prioritized if ladderId missed)
-      // Status enum: scheduled, pending_confirmation, completed, disputed
-      const [tRows] = await execute(
-        'SELECT * FROM tournament_matches WHERE id = ?',
-        [matchId]
-      );
-
-      // Filter for valid confirm status
-      if (tRows.length > 0) {
-        const tm = tRows[0];
-        if (tm.status === 'pending_confirmation') {
-          isTournament = true;
-          tourneyMatch = tm;
-        } else if (tm.status === 'completed') {
-          return { ok: false, code: 'confirmed' };
-        } else if (tm.status === 'scheduled') {
-          return { ok: false, code: 'pending' }; // Needs report first
-        }
-      } else {
-        return { ok: false, code: 'not_found' };
+    // Try lookup from thread first (MOST RELIABLE)
+    if (thread) {
+      const context = await getMatchContext(thread.id);
+      if (context) {
+        matchId = context.matchId; // Override/Ensure ID matches thread
+        type = context.type;
       }
     }
+
+    // Fallbacks if no context (Legacy support or manual call without thread context?)
+    if (!type) {
+      if (ladderId) type = 'ladder';
+      else {
+        // Fallback: Check if it exists in tournament table first?
+        // Or fail?
+        console.warn(`[confirmMatch] No context found for match ${matchId} in thread ${thread?.id}. Defaulting to ladder check.`);
+        type = 'ladder';
+      }
+    }
+
+    // 2. LOAD MATCH DATA BASED ON TYPE
+    let match = null;
+    let isTournament = (type === 'tournament');
 
     if (isTournament) {
+      const [rows] = await execute('SELECT * FROM tournament_matches WHERE id = ?', [matchId]);
+      if (rows.length > 0) match = rows[0];
+    } else {
+      const [rows] = await execute('SELECT * FROM ladder_matches WHERE id = ?', [matchId]);
+      if (rows.length > 0) match = rows[0];
+    }
+
+    if (!match) return { ok: false, code: 'not_found' };
+
+    // 3. COMMON STATUS CHECKS
+    const status = match.status;
+    if (status === 'disputed') return { ok: false, code: 'disputed' };
+
+    // Check confirmed status
+    const isCompleted = isTournament ? (status === 'completed') : (status === 'confirmed');
+    // Tournament 'pending_confirmation' is the ready state. 'scheduled' is not ready.
+    const isPending = isTournament ? (status === 'pending_confirmation') : (status === 'pending');
+
+    if (isCompleted) return { ok: false, code: 'confirmed' };
+    if (!isPending) return { ok: false, code: 'pending' };
+
+    // 4. EXECUTE CONFIRMATION LOGIC
+    if (isTournament) {
       // --- TOURNAMENT LOGIC ---
-      const match = tourneyMatch;
-      // Determine Winner
       let winnerId = null;
       if (match.player1_score > match.player2_score) winnerId = match.player1_id;
       else if (match.player2_score > match.player1_score) winnerId = match.player2_id;
-      else {
-        return { ok: false, code: 'draw_not_allowed' };
-      }
+      else return { ok: false, code: 'draw_not_allowed' };
 
-      // Execute Service
       await tournamentService.processTournamentMatchResult(matchId, winnerId);
 
-      // Notify Thread
       const embed = new EmbedBuilder()
         .setTitle(`🏆 Jogo de Torneio #${matchId} Confirmado`)
-        .setDescription(`Vencedor: <@${winnerId}>`) // Simplification
+        .setDescription(`Vencedor: <@${winnerId}>`)
         .setColor(0xF1C40F);
 
       if (thread) {
@@ -154,196 +179,162 @@ async function confirmMatch(client, matchId, ladderId, thread, options = {}) {
         await thread.setArchived(true).catch(() => { });
       }
       return { ok: true };
-    }
-
-    // --- EXISTING LADDER LOGIC ---
-    const match = matchRows[0];
-
-    // Must be reported to be confirmed
-    if (!match.reported_by) {
-      return { ok: false, code: 'pending' };
-    }
-
-    // Fetch player stats
-    const [playerStats] = await execute(
-      'SELECT * FROM ladder_player_stats WHERE player_id IN (?, ?) AND ladder_id = ?',
-      [match.player1_id, match.player2_id, ladderId]
-    );
-    const statsMap = {};
-    playerStats.forEach(ps => { statsMap[ps.player_id] = ps; });
-
-    // Safety check: if stats missing (new player?), create basic entry? 
-    // Usually ensured by creation logic, but just in case:
-    if (!statsMap[match.player1_id] || !statsMap[match.player2_id]) {
-      console.error(`Missing stats for players in match ${matchId}`);
-      // Retaining logic: fails if stats missing, but could be safer. 
-      // For now keeping existing behavior but logging.
-    }
-
-    // Determine draw/winner (penalties decisive)
-    const hasPenalty = (match.penalty_score1 !== null && match.penalty_score2 !== null);
-    const penaltyScoresValid = hasPenalty && (match.penalty_score1 !== 0 || match.penalty_score2 !== 0);
-    const isDraw = match.player1_score === match.player2_score && !penaltyScoresValid;
-
-    let winnerId = null;
-    if (!isDraw) {
-      if (penaltyScoresValid) {
-        winnerId = match.penalty_score1 > match.penalty_score2 ? match.player1_id : match.player2_id;
-      } else {
-        winnerId = match.player1_score > match.player2_score ? match.player1_id : match.player2_id;
+    } else {
+      // --- LADDER LOGIC ---
+      // Must be reported to be confirmed
+      if (!match.reported_by) {
+        return { ok: false, code: 'pending' };
       }
-    }
 
-    const result1 = isDraw ? 0.5 : (match.player1_id === winnerId ? 1 : 0);
-    const result2 = isDraw ? 0.5 : (match.player2_id === winnerId ? 1 : 0);
-    const goalDiff = Math.abs(match.player1_score - match.player2_score);
+      // Fetch player stats
+      const [playerStats] = await execute(
+        'SELECT * FROM ladder_player_stats WHERE player_id IN (?, ?) AND ladder_id = ?',
+        [match.player1_id, match.player2_id, match.ladder_id || ladderId]
+      );
+      const statsMap = {};
+      playerStats.forEach(ps => { statsMap[ps.player_id] = ps; });
 
-    const preElo1 = statsMap[match.player1_id].elo_rating;
-    const preElo2 = statsMap[match.player2_id].elo_rating;
-    const preWS1 = statsMap[match.player1_id].win_streak || 0;
-    const preWS2 = statsMap[match.player2_id].win_streak || 0;
-
-    const newElo1 = calculateEloAdvanced({
-      playerRating: preElo1,
-      opponentRating: preElo2,
-      result: result1,
-      goalDiff,
-      winStreak: preWS1,
-      isWinner: result1 === 1
-    });
-    const newElo2 = calculateEloAdvanced({
-      playerRating: preElo2,
-      opponentRating: preElo1,
-      result: result2,
-      goalDiff,
-      winStreak: preWS2,
-      isWinner: result2 === 1
-    });
-
-    const delta1 = newElo1 - preElo1;
-    const delta2 = newElo2 - preElo2;
-
-    const checkpoint1 = (result1 === 0 && preWS1 > 0 && preElo1 < 1000);
-    const checkpoint2 = (result2 === 0 && preWS2 > 0 && preElo2 < 1000);
-
-    // Update stats P1
-    const gamesPlayed1 = statsMap[match.player1_id].games_played + 1;
-    const isPenaltyDecided = (match.penalty_score1 !== null && match.penalty_score2 !== null);
-
-    const wins1 = statsMap[match.player1_id].wins + (result1 === 1 ? 1 : 0);
-    const draws1 = statsMap[match.player1_id].draws + ((result1 === 0.5 && !isPenaltyDecided) ? 1 : 0);
-    const losses1 = statsMap[match.player1_id].losses + (result1 === 0 ? 1 : 0);
-    const goalsScored1 = statsMap[match.player1_id].goals_scored + match.player1_score;
-    const goalsConceded1 = statsMap[match.player1_id].goals_conceded + match.player2_score;
-    const points1 = statsMap[match.player1_id].points + (result1 === 1 ? 3 : (result1 === 0.5 && !isPenaltyDecided) ? 1 : 0);
-    const goalDiff1 = goalsScored1 - goalsConceded1;
-    const winStreak1 = result1 === 1 ? preWS1 + 1 : 0;
-
-    // Update stats P2
-    const gamesPlayed2 = statsMap[match.player2_id].games_played + 1;
-    const wins2 = statsMap[match.player2_id].wins + (result2 === 1 ? 1 : 0);
-    const draws2 = statsMap[match.player2_id].draws + ((result2 === 0.5 && !isPenaltyDecided) ? 1 : 0);
-    const losses2 = statsMap[match.player2_id].losses + (result2 === 0 ? 1 : 0);
-    const goalsScored2 = statsMap[match.player2_id].goals_scored + match.player2_score;
-    const goalsConceded2 = statsMap[match.player2_id].goals_conceded + match.player1_score;
-    const points2 = statsMap[match.player2_id].points + (result2 === 1 ? 3 : (result2 === 0.5 && !isPenaltyDecided) ? 1 : 0);
-    const goalDiff2 = goalsScored2 - goalsConceded2;
-    const winStreak2 = result2 === 1 ? preWS2 + 1 : 0;
-
-    await execute(
-      'UPDATE ladder_player_stats SET elo_rating = ?, last_played = NOW(), win_streak = ?, games_played = ?, wins = ?, draws = ?, losses = ?, goals_scored = ?, goals_conceded = ?, points = ?, goal_diff = ? WHERE player_id = ? AND ladder_id = ?',
-      [newElo1, winStreak1, gamesPlayed1, wins1, draws1, losses1, goalsScored1, goalsConceded1, points1, goalDiff1, match.player1_id, ladderId]
-    );
-
-    await execute(
-      'UPDATE ladder_player_stats SET elo_rating = ?, last_played = NOW(), win_streak = ?, games_played = ?, wins = ?, draws = ?, losses = ?, goals_scored = ?, goals_conceded = ?, points = ?, goal_diff = ? WHERE player_id = ? AND ladder_id = ?',
-      [newElo2, winStreak2, gamesPlayed2, wins2, draws2, losses2, goalsScored2, goalsConceded2, points2, goalDiff2, match.player2_id, ladderId]
-    );
-
-    await execute(
-      'INSERT INTO ladder_elo_history (match_id, player_id, old_elo, new_elo, delta, changed_at, ladder_id) VALUES (?, ?, ?, ?, ?, NOW(), ?)',
-      [match.id, match.player1_id, preElo1, newElo1, delta1, ladderId]
-    );
-    await execute(
-      'INSERT INTO ladder_elo_history (match_id, player_id, old_elo, new_elo, delta, changed_at, ladder_id) VALUES (?, ?, ?, ?, ?, NOW(), ?)',
-      [match.id, match.player2_id, preElo2, newElo2, delta2, ladderId]
-    );
-
-    await execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['confirmed', match.id]);
-
-    // Get Discord IDs and gamertags
-    const [player1DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player1_id]);
-    const [player2DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player2_id]);
-    const player1Id = player1DiscordRows[0]?.discord_id;
-    const player2Id = player2DiscordRows[0]?.discord_id;
-    const player1Gamertag = player1DiscordRows[0]?.gamertag || 'Unknown';
-    const player2Gamertag = player2DiscordRows[0]?.gamertag || 'Unknown';
-
-    // Resolve proper guild members for mentions
-    const guild = thread.guild;
-    async function getMemberPack(id) {
-      if (!id) return { member: null, name: 'Unknown', tag: 'unknown', mention: '`unknown`', id: null };
-      try {
-        const m = await guild.members.fetch(id);
-        const name = m.user.globalName || m.displayName || m.user.username;
-        const tag = m.user.tag || m.user.username;
-        const mention = m.toString();
-        return { member: m, name, tag, mention, id };
-      } catch {
-        return { member: null, name: 'Unknown', tag: String(id), mention: `<@${id}>`, id };
+      if (!statsMap[match.player1_id] || !statsMap[match.player2_id]) {
+        console.error(`Missing stats for players in match ${matchId}`);
       }
-    }
-    const p1 = await getMemberPack(player1Id);
-    const p2 = await getMemberPack(player2Id);
 
-    // Score line (include penalties if present)
-    const scoreLine = (match.penalty_score1 !== null && match.penalty_score2 !== null)
-      ? `**${player1Gamertag}** **${match.player1_score}** (${match.penalty_score1}) – (${match.penalty_score2}) **${match.player2_score}** **${player2Gamertag}**`
-      : `**${player1Gamertag}** **${match.player1_score}** – **${match.player2_score}** **${player2Gamertag}**`;
+      // Determine draw/winner (penalties decisive)
+      const hasPenalty = (match.penalty_score1 !== null && match.penalty_score2 !== null);
+      const penaltyScoresValid = hasPenalty && (match.penalty_score1 !== 0 || match.penalty_score2 !== 0);
+      const isDraw = match.player1_score === match.player2_score && !penaltyScoresValid;
 
-    const p1Icon = (newElo1 - preElo1) >= 0 ? '🟢' : '🔴';
-    const p2Icon = (newElo2 - preElo2) >= 0 ? '🟢' : '🔴';
-    const formatDelta = (d, checkpoint) => `${d >= 0 ? `+${d}` : `${d}`}${checkpoint ? ' 🛡️ *Checkpoint*' : ''}`;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🆚 Jogo #${matchId} Confirmado`)
-      .setDescription(scoreLine)
-      .addFields(
-        {
-          name: player1Gamertag,
-          value:
-            `${p1Icon} ${p1.mention}\n` +
-            `Elo: **${formatDelta(newElo1 - preElo1, checkpoint1)}**\n` +
-            `Elo: ${preElo1} → **${newElo1}**`,
-          inline: true
-        },
-        {
-          name: player2Gamertag,
-          value:
-            `${p2Icon} ${p2.mention}\n` +
-            `Elo: **${formatDelta(newElo2 - preElo2, checkpoint2)}**\n` +
-            `Elo: ${preElo2} → **${newElo2}**`,
-          inline: true
+      let winnerId = null;
+      if (!isDraw) {
+        if (penaltyScoresValid) {
+          winnerId = match.penalty_score1 > match.penalty_score2 ? match.player1_id : match.player2_id;
+        } else {
+          winnerId = match.player1_score > match.player2_score ? match.player1_id : match.player2_id;
         }
-      )
-      .setTimestamp()
-      .setColor(isDraw ? 0x99AAB5 : 0x57F287);
+      }
 
-    const footerText = (source === 'manual' && confirmer)
-      ? `Confirmed by ${confirmer}`
-      : (source === 'auto')
-        ? 'Confirmado automaticamente pelo sistema'
-        : null;
-    if (footerText) embed.setFooter({ text: footerText });
+      const result1 = isDraw ? 0.5 : (match.player1_id === winnerId ? 1 : 0);
+      const result2 = isDraw ? 0.5 : (match.player2_id === winnerId ? 1 : 0);
+      const goalDiff = Math.abs(match.player1_score - match.player2_score);
 
-    // Ensure thread is open for sending
-    if (thread.archived) {
-      try { await thread.setArchived(false); } catch (err) { console.error('❌ Failed to unarchive thread:', err); }
+      const preElo1 = statsMap[match.player1_id].elo_rating;
+      const preElo2 = statsMap[match.player2_id].elo_rating;
+      const preWS1 = statsMap[match.player1_id].win_streak || 0;
+      const preWS2 = statsMap[match.player2_id].win_streak || 0;
+
+      const newElo1 = calculateEloAdvanced({
+        playerRating: preElo1, opponentRating: preElo2, result: result1, goalDiff, winStreak: preWS1, isWinner: result1 === 1
+      });
+      const newElo2 = calculateEloAdvanced({
+        playerRating: preElo2, opponentRating: preElo1, result: result2, goalDiff, winStreak: preWS2, isWinner: result2 === 1
+      });
+
+      const delta1 = newElo1 - preElo1;
+      const delta2 = newElo2 - preElo2;
+
+      const checkpoint1 = (result1 === 0 && preWS1 > 0 && preElo1 < 1000);
+      const checkpoint2 = (result2 === 0 && preWS2 > 0 && preElo2 < 1000);
+
+      // Update stats P1
+      const gamesPlayed1 = statsMap[match.player1_id].games_played + 1;
+      const isPenaltyDecided = (match.penalty_score1 !== null && match.penalty_score2 !== null);
+
+      const wins1 = statsMap[match.player1_id].wins + (result1 === 1 ? 1 : 0);
+      const draws1 = statsMap[match.player1_id].draws + ((result1 === 0.5 && !isPenaltyDecided) ? 1 : 0);
+      const losses1 = statsMap[match.player1_id].losses + (result1 === 0 ? 1 : 0);
+      const goalsScored1 = statsMap[match.player1_id].goals_scored + match.player1_score;
+      const goalsConceded1 = statsMap[match.player1_id].goals_conceded + match.player2_score;
+      const points1 = statsMap[match.player1_id].points + (result1 === 1 ? 3 : (result1 === 0.5 && !isPenaltyDecided) ? 1 : 0);
+      const goalDiff1 = goalsScored1 - goalsConceded1;
+      const winStreak1 = result1 === 1 ? preWS1 + 1 : 0;
+
+      // Update stats P2
+      const gamesPlayed2 = statsMap[match.player2_id].games_played + 1;
+      const wins2 = statsMap[match.player2_id].wins + (result2 === 1 ? 1 : 0);
+      const draws2 = statsMap[match.player2_id].draws + ((result2 === 0.5 && !isPenaltyDecided) ? 1 : 0);
+      const losses2 = statsMap[match.player2_id].losses + (result2 === 0 ? 1 : 0);
+      const goalsScored2 = statsMap[match.player2_id].goals_scored + match.player2_score;
+      const goalsConceded2 = statsMap[match.player2_id].goals_conceded + match.player1_score;
+      const points2 = statsMap[match.player2_id].points + (result2 === 1 ? 3 : (result2 === 0.5 && !isPenaltyDecided) ? 1 : 0);
+      const goalDiff2 = goalsScored2 - goalsConceded2;
+      const winStreak2 = result2 === 1 ? preWS2 + 1 : 0;
+
+      const currentLadderId = match.ladder_id || ladderId;
+
+      await execute(
+        'UPDATE ladder_player_stats SET elo_rating = ?, last_played = NOW(), win_streak = ?, games_played = ?, wins = ?, draws = ?, losses = ?, goals_scored = ?, goals_conceded = ?, points = ?, goal_diff = ? WHERE player_id = ? AND ladder_id = ?',
+        [newElo1, winStreak1, gamesPlayed1, wins1, draws1, losses1, goalsScored1, goalsConceded1, points1, goalDiff1, match.player1_id, currentLadderId]
+      );
+
+      await execute(
+        'UPDATE ladder_player_stats SET elo_rating = ?, last_played = NOW(), win_streak = ?, games_played = ?, wins = ?, draws = ?, losses = ?, goals_scored = ?, goals_conceded = ?, points = ?, goal_diff = ? WHERE player_id = ? AND ladder_id = ?',
+        [newElo2, winStreak2, gamesPlayed2, wins2, draws2, losses2, goalsScored2, goalsConceded2, points2, goalDiff2, match.player2_id, currentLadderId]
+      );
+
+      await execute(
+        'INSERT INTO ladder_elo_history (match_id, player_id, old_elo, new_elo, delta, changed_at, ladder_id) VALUES (?, ?, ?, ?, ?, NOW(), ?)',
+        [match.id, match.player1_id, preElo1, newElo1, delta1, currentLadderId]
+      );
+      await execute(
+        'INSERT INTO ladder_elo_history (match_id, player_id, old_elo, new_elo, delta, changed_at, ladder_id) VALUES (?, ?, ?, ?, ?, NOW(), ?)',
+        [match.id, match.player2_id, preElo2, newElo2, delta2, currentLadderId]
+      );
+
+      await execute('UPDATE ladder_matches SET status = ? WHERE id = ?', ['confirmed', match.id]);
+
+      // Get Discord IDs and gamertags
+      const [player1DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player1_id]);
+      const [player2DiscordRows] = await execute('SELECT discord_id, gamertag FROM users WHERE id = ?', [match.player2_id]);
+      const player1Id = player1DiscordRows[0]?.discord_id;
+      const player2Id = player2DiscordRows[0]?.discord_id;
+      const player1Gamertag = player1DiscordRows[0]?.gamertag || 'Unknown';
+      const player2Gamertag = player2DiscordRows[0]?.gamertag || 'Unknown';
+
+      // Resolve proper guild members for mentions
+      const guild = thread.guild;
+      async function getMemberPack(id) {
+        if (!id) return { member: null, name: 'Unknown', tag: 'unknown', mention: '`unknown`', id: null };
+        try {
+          const m = await guild.members.fetch(id);
+          const name = m.user.globalName || m.displayName || m.user.username;
+          const tag = m.user.tag || m.user.username;
+          const mention = m.toString();
+          return { member: m, name, tag, mention, id };
+        } catch {
+          return { member: null, name: 'Unknown', tag: String(id), mention: `<@${id}>`, id };
+        }
+      }
+      const p1 = await getMemberPack(player1Id);
+      const p2 = await getMemberPack(player2Id);
+
+      // Score line
+      const scoreLine = (match.penalty_score1 !== null && match.penalty_score2 !== null)
+        ? `**${player1Gamertag}** **${match.player1_score}** (${match.penalty_score1}) – (${match.penalty_score2}) **${match.player2_score}** **${player2Gamertag}**`
+        : `**${player1Gamertag}** **${match.player1_score}** – **${match.player2_score}** **${player2Gamertag}**`;
+
+      const p1Icon = (newElo1 - preElo1) >= 0 ? '🟢' : '🔴';
+      const p2Icon = (newElo2 - preElo2) >= 0 ? '🟢' : '🔴';
+      const formatDelta = (d, checkpoint) => `${d >= 0 ? `+${d}` : `${d}`}${checkpoint ? ' 🛡️ *Checkpoint*' : ''}`;
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🆚 Jogo #${matchId} Confirmado`)
+        .setDescription(scoreLine)
+        .addFields(
+          { name: player1Gamertag, value: `${p1Icon} ${p1.mention}\nElo: **${formatDelta(newElo1 - preElo1, checkpoint1)}**\nElo: ${preElo1} → **${newElo1}**`, inline: true },
+          { name: player2Gamertag, value: `${p2Icon} ${p2.mention}\nElo: **${formatDelta(newElo2 - preElo2, checkpoint2)}**\nElo: ${preElo2} → **${newElo2}**`, inline: true }
+        )
+        .setTimestamp()
+        .setColor(isDraw ? 0x99AAB5 : 0x57F287);
+
+      const footerText = (source === 'manual' && confirmer) ? `Confirmed by ${confirmer}` : (source === 'auto') ? 'Confirmado automaticamente pelo sistema' : null;
+      if (footerText) embed.setFooter({ text: footerText });
+
+      if (thread) {
+        if (thread.archived) await thread.setArchived(false).catch(() => { });
+        await thread.send({ embeds: [embed] });
+        await thread.setArchived(true).catch(() => { });
+      }
+      return { ok: true };
     }
-    await thread.send({ embeds: [embed] });
-    await thread.setArchived(true).catch(console.error);
-
-    return { ok: true };
   } catch (error) {
     console.error('❌ Error in match confirmation:', error);
     return { ok: false, code: 'exception' };
@@ -404,9 +395,9 @@ async function createMatchThread(
   player2DiscordId,
   matchId,
   player1Gamertag,
-  player2Gamertag
+  player2Gamertag,
+  type = 'ladder' // Default param
 ) {
-  // Accept either an interaction (with .channel) or a channel object directly
   const channel = interactionOrChannel.threads ? interactionOrChannel : interactionOrChannel.channel;
   const threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
 
@@ -421,6 +412,9 @@ async function createMatchThread(
     try { await thread.join(); } catch { }
   }
 
+  // [NEW] Register the thread map
+  await registerMatchThread(thread.id, matchId, type);
+
   await notifyLadderAdminsNewGame(thread, threadTitle);
 
   await thread.send(`Jogo #${matchId} iniciado entre <@${player1DiscordId}> e <@${player2DiscordId}>.`);
@@ -431,13 +425,8 @@ async function createMatchThread(
 
 /**
  * Get the rank of a user in a ladder, using multi-level sorting logic.
- * @param {number} userId - The player's user ID.
- * @param {number} ladderId - The ladder ID.
- * @param {number} competitionId - The competition/season ID.
- * @returns {Promise<number|null>} The rank (1-based), or null if not found.
  */
 async function getRankByUserID(userId, ladderId, competitionId) {
-  // Fetch all player stats for this ladder and competition
   const [allStatsRows] = await execute(
     `SELECT 
         ps.player_id,
@@ -458,17 +447,11 @@ async function getRankByUserID(userId, ladderId, competitionId) {
     [competitionId, ladderId]
   );
 
-  // Sort using the provided comparator logic (default: elo_rating DESC)
   const sortedStats = allStatsRows.slice().sort((a, b) => {
-    // 1. ELO Rating (desc)
     if (a.elo_rating !== b.elo_rating) return b.elo_rating - a.elo_rating;
-    // 2. Goal Difference (desc)
     if (a.goal_diff !== b.goal_diff) return b.goal_diff - a.goal_diff;
-    // 3. Goals Scored (desc)
     if (a.goals_scored !== b.goals_scored) return b.goals_scored - a.goals_scored;
-    // 4. Goals Conceded (asc)
     if (a.goals_conceded !== b.goals_conceded) return a.goals_conceded - b.goals_conceded;
-    // 5. Name (asc, case-insensitive)
     let nameA = (a.username || "").toLowerCase();
     let nameB = (b.username || "").toLowerCase();
     if (nameA < nameB) return -1;
@@ -482,8 +465,6 @@ async function getRankByUserID(userId, ladderId, competitionId) {
 
 /**
  * Get global stats for a ladder.
- * @param {number} ladderId
- * @returns {Promise<Object>} Stats object
  */
 async function getLadderStats(ladderId) {
   // Number of matches played
@@ -551,5 +532,7 @@ module.exports = {
   createMatchThread,
   confirmMatch,
   getRankByUserID,
-  getLadderStats
+  getLadderStats,
+  registerMatchThread,
+  getMatchContext
 };

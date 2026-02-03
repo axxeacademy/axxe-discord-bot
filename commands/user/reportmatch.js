@@ -27,7 +27,6 @@ module.exports = {
   async execute(interaction) {
     // Log time between interaction creation and handler execution
     const now = Date.now();
-    const created = interaction.createdTimestamp || (interaction.createdAt ? interaction.createdAt.getTime() : now);
 
     // Always defer reply at the start
     await interaction.deferReply();
@@ -114,24 +113,23 @@ module.exports = {
         'SELECT id, gamertag, username, discord_id FROM users WHERE discord_id = ?',
         [reporterDiscordId]
       );
-      if (!me) {
+
+      const isAdmin = interaction.member.permissions.has('Administrator');
+
+      // If reporter is not in DB and not admin, fail
+      if (!me && !isAdmin) {
         return interaction.editReply({ content: '❌ Não está registado no sistema.' });
       }
 
-      const reporterPlayerId = me.id;
+      const reporterPlayerId = me?.id;
       const reporterIsPlayer1 = match.player1_id === reporterPlayerId;
       const reporterIsPlayer2 = match.player2_id === reporterPlayerId;
 
-      if (!reporterIsPlayer1 && !reporterIsPlayer2) {
-        return interaction.editReply({ content: '❌ Você não participa neste jogo.' });
+      if (!reporterIsPlayer1 && !reporterIsPlayer2 && !isAdmin) {
+        return interaction.editReply({ content: '❌ Você não participa neste jogo e não é administrador.' });
       }
 
       const opponentPlayerId = reporterIsPlayer1 ? match.player2_id : match.player1_id;
-
-      const [[opp]] = await execute(
-        'SELECT id, gamertag, username, discord_id FROM users WHERE id = ?',
-        [opponentPlayerId]
-      );
 
       // Penalties rules
       if (score1 !== score2) {
@@ -151,13 +149,20 @@ module.exports = {
       }
 
       // Prepare Update
-      // NOTE: reporterIsPlayer1 means 'score1' is THEIR score (P1 score), score2 is OPPONENT (P2).
-      // If reporterIsPlayer2, 'score1' is THEIR score (P2 score), score2 is OPPONENT (P1).
+      // If reporter is Admin and NOT a player, we assume 'yourscore' = Player1, 'opponentscore' = Player2
+      let realP1Score, realP2Score, realP1Pen, realP2Pen;
 
-      const realP1Score = reporterIsPlayer1 ? score1 : score2;
-      const realP2Score = reporterIsPlayer1 ? score2 : score1;
-      const realP1Pen = reporterIsPlayer1 ? penaltyScore1 : penaltyScore2;
-      const realP2Pen = reporterIsPlayer1 ? penaltyScore2 : penaltyScore1;
+      if (isAdmin && !reporterIsPlayer1 && !reporterIsPlayer2) {
+        realP1Score = score1;
+        realP2Score = score2;
+        realP1Pen = penaltyScore1;
+        realP2Pen = penaltyScore2;
+      } else {
+        realP1Score = reporterIsPlayer1 ? score1 : score2;
+        realP2Score = reporterIsPlayer1 ? score2 : score1;
+        realP1Pen = reporterIsPlayer1 ? penaltyScore1 : penaltyScore2;
+        realP2Pen = reporterIsPlayer1 ? penaltyScore2 : penaltyScore1;
+      }
 
       if (isTournament) {
         // TOURNAMENT UPDATE
@@ -165,7 +170,7 @@ module.exports = {
           `UPDATE tournament_matches
              SET player1_score = ?, player2_score = ?, reported_by = ?, status = 'pending_confirmation', reported_at = NOW()
              WHERE id = ?`,
-          [realP1Score, realP2Score, reporterPlayerId, matchId]
+          [realP1Score, realP2Score, reporterPlayerId || null, matchId]
         );
       } else {
         // LADDER UPDATE
@@ -181,12 +186,19 @@ module.exports = {
         }
       }
 
-      // Re-read for embed
+      // Re-read for embed (Optional optimization skipped for safety)
+      // Retrieve opponent info (even if admin reported)
+      const targetOpponentId = opponentPlayerId || (reporterIsPlayer1 ? match.player2_id : match.player1_id);
+      const [[opp]] = await execute(
+        'SELECT id, gamertag, username, discord_id FROM users WHERE id = ?',
+        [targetOpponentId]
+      );
+
       // Standardize data for embed builder
-      const p1Gamertag = me.id === match.player1_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 1');
-      const p2Gamertag = me.id === match.player2_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 2');
-      const p1Mention = me.id === match.player1_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p1Gamertag);
-      const p2Mention = me.id === match.player2_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p2Gamertag);
+      const p1Gamertag = me?.id === match.player1_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 1');
+      const p2Gamertag = me?.id === match.player2_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 2');
+      const p1Mention = me?.id === match.player1_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p1Gamertag);
+      const p2Mention = me?.id === match.player2_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p2Gamertag);
 
       const embed = buildMatchEmbed({
         state: 'reported',

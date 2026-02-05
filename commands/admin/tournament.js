@@ -196,23 +196,10 @@ module.exports = {
                 // However, the user said "participants list". 
                 // Let's assume we create dummy users for verification purposes if they don't exist by name.
 
+                let currentSeed = 1;
                 for (let pName of participantList) {
-                    if (!pName || pName === 'BYE') continue; // Skip BYEs, they are handled by padding if needed, but our generator pads automatically.
-                    // Wait, if we want SPECIFIC seeding, we must register them in order.
-                    // If we skip BYEs here, the join order is compacted.
-                    // If the generator calculates padding based on COUNT, it adds BYEs at the end?
-                    // `generateDoubleEliminationBracket` pads to power of 2.
-                    // If we want explicit BYEs in the *middle* (e.g. Seed 1 vs Bye), we might need to register dummy BYE users?
-                    // `tournamentService` treats `user_id=null` as BYE.
-                    // But `registerParticipant` inserts into `tournament_participants`.
-                    // Does `tournament_participants` allow null user_id? 
-                    // `tournamentService.js` line 53: INSERT ... VALUES (?, ?, "active"). 
-                    // Probably NO.
-
-                    // IF the input script has specific pairing, we need the generator to respect it.
-                    // The generator orders by `joined_at`.
-                    // So we must register REAL users (or Dummies).
-                    // If 'pName' is just a string, we find/create a user with that username.
+                    const seed = currentSeed++;
+                    if (!pName || pName === 'BYE') continue; // Gap in seeds will be a BYE
 
                     // Create/Find Dummy User
                     let userId;
@@ -221,14 +208,13 @@ module.exports = {
                         userId = uRows[0].id;
                     } else {
                         // Create dummy
-                        // We need a unique discord_id. Let's fake one.
                         const fakeDid = `dummy-${Date.now()}-${Math.random()}`;
                         const [ins] = await db.execute('INSERT INTO users (discord_id, username, is_bot) VALUES (?, ?, 1)', [fakeDid, pName]);
                         userId = ins.insertId;
                     }
 
                     try {
-                        await tournamentService.registerParticipant(compId, userId);
+                        await tournamentService.registerParticipant(compId, userId, seed);
                     } catch (e) {
                         console.error(`Failed to register ${pName}:`, e.message);
                     }

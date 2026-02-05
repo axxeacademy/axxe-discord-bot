@@ -33,7 +33,7 @@ async function createCompetition(name, slug, type, format, settings = {}, editio
 /**
  * Register a user for a competition.
  */
-async function registerParticipant(competitionId, userId) {
+async function registerParticipant(competitionId, userId, seed = null) {
     // Check if competition accepts registrations
     const [comp] = await execute('SELECT * FROM competitions WHERE id = ?', [competitionId]);
     if (!comp.length) throw new Error('Competition not found');
@@ -50,8 +50,8 @@ async function registerParticipant(competitionId, userId) {
 
     // Register
     await execute(
-        'INSERT INTO tournament_participants (competition_id, user_id, status) VALUES (?, ?, "active")',
-        [competitionId, userId]
+        'INSERT INTO tournament_participants (competition_id, user_id, seed, status) VALUES (?, ?, ?, "active")',
+        [competitionId, userId, seed]
     );
 }
 
@@ -92,17 +92,40 @@ async function startCompetition(competitionId, channel) {
  * Implements Phase 2: Power-of-2 Padding, Round Slugs, Losers Bracket.
  */
 async function generateDoubleEliminationBracket(competitionId, channel) {
-    // 1. Fetch & Shuffle Participants
+    // 1. Fetch Participants ordered by seed (defaulting to join order if seed is null)
     const [dbParticipants] = await execute(
-        'SELECT * FROM tournament_participants WHERE competition_id = ? ORDER BY joined_at ASC', // Randomize if needed
+        'SELECT * FROM tournament_participants WHERE competition_id = ? ORDER BY COALESCE(seed, 999), joined_at ASC',
         [competitionId]
     );
 
-    // 2. Pad to Power of 2 with BYEs
-    let participants = [...dbParticipants];
-    const targetSize = getNextPowerOfTwo(participants.length);
-    while (participants.length < targetSize) {
-        participants.push({ user_id: null, is_bye: true });
+    // 2. Pad to Power of 2 based on count or max seed
+    let maxSeedFound = 0;
+    dbParticipants.forEach(p => { if (p.seed > maxSeedFound) maxSeedFound = p.seed; });
+
+    const targetSize = getNextPowerOfTwo(Math.max(dbParticipants.length, maxSeedFound));
+
+    // Create a fixed-size array for the slots
+    let participants = new Array(targetSize).fill(null).map((_, i) => ({ user_id: null, is_bye: true }));
+
+    // Place participants in their seeded slots (1-indexed)
+    let unseeded = [];
+    dbParticipants.forEach(p => {
+        if (p.seed && p.seed <= targetSize) {
+            participants[p.seed - 1] = { ...p, is_bye: false };
+        } else {
+            unseeded.push(p);
+        }
+    });
+
+    // Fill remaining slots with unseeded participants
+    let slotIdx = 0;
+    for (const p of unseeded) {
+        while (slotIdx < targetSize && !participants[slotIdx].is_bye) {
+            slotIdx++;
+        }
+        if (slotIdx < targetSize) {
+            participants[slotIdx] = { ...p, is_bye: false };
+        }
     }
 
     // Shuffle here if desired, otherwise seeds are based on join order

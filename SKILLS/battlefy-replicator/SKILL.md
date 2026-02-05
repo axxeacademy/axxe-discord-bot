@@ -7,9 +7,10 @@ description: Replicates a Battlefy tournament bracket in Discord for verificatio
 
 ## Workflow
 
-1.  **Prepare Data**: Create a JSON file with the participants list in seed order.
-2.  **Generate Script**: Run `node SKILLS/battlefy-replicator/scripts/create_db_script.js <json_path> <channel_id>`.
-3.  **Execute in Discord**: Run `/tournament script <ID>` in the bot.
+1.  **Scrape Bracket**: Navigate to the Battlefy bracket link and extract the participants in Round 1 match order (including BYEs).
+2.  **Generate SQL**: Run `node SKILLS/battlefy-replicator/scripts/generate_sql.js <json_path> <channel_id>` or generate the SQL statement directly.
+3.  **Manual Execution**: Provide the SQL script to the user to run on their remote database (e.g., Railway).
+4.  **Execute in Discord**: Once the user has the inserted row's ID, they run `/tournament script <ID>` in the bot.
 
 ## Input Format
 

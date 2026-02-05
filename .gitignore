@@ -6,3 +6,6 @@ npm-debug.log*
 yarn-error.log*
 dist
 coverage
+img/admin_500x500_DarkMode.png
+img/admin_500x500_Light.png
+img/axxebot.png

@@ -192,10 +192,11 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
 
     // WB -> LB (Drop logic)
     if (numRoundsLB > 0) {
-        for (let r = 1; r < numRoundsWB; r++) {
+        for (let r = 1; r <= numRoundsWB; r++) {
             const wRoundInfo = wbMatches[r];
             let targetLbRoundIdx = (r === 1) ? 1 : (r * 2) - 2;
             const lRoundTarget = lbMatches[targetLbRoundIdx];
+            if (!lRoundTarget) continue; // Safety check
             for (let i = 0; i < wRoundInfo.length; i++) {
                 let targetMatchId;
                 let slot;

@@ -1,5 +1,5 @@
 // commands/admin/solvedispute.js
-const { SlashCommandBuilder, MessageFlags} = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../../utils/db'); // <-- pooled mysql2/promise pool
 const { notifyLadderAdminsDisputeResolved } = require('../../utils/notifyAdmins');
 const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
@@ -141,6 +141,18 @@ module.exports = {
         }
       }
 
+      // [NEW] Remove 🚨 icon from name since it's resolved (back to pending)
+      try {
+        const currentName = thread.name;
+        if (currentName.includes('🚨')) {
+          // Restore normal separator or just remove the icon
+          const newName = currentName.replace(/\s*🚨\s*/, ' - ');
+          await thread.setName(newName);
+        }
+      } catch (nameErr) {
+        console.warn('Could not rename thread to pending:', nameErr);
+      }
+
 
       await notifyLadderAdminsDisputeResolved(thread, {
         matchTitle: thread.name,
@@ -157,7 +169,7 @@ module.exports = {
       // If we were inside a transaction, try to roll back
       try {
         if (conn) await conn.rollback();
-      } catch {}
+      } catch { }
       // Best-effort user feedback
       try {
         if (interaction.deferred || interaction.replied) {
@@ -170,7 +182,7 @@ module.exports = {
             content: '❌ Erro ao resolver disputa.',
           });
         }
-      } catch {}
+      } catch { }
     } finally {
       if (conn) conn.release();
     }

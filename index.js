@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { startQueueReview } = require('./services/queueReviewService');
+const { startCleanupTask } = require('./services/cleanupService');
 
 const client = new Client({
   intents: [
@@ -48,6 +49,7 @@ for (const folder of commandFolders) {
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   startQueueReview(client);
+  startCleanupTask(client);
 });
 
 // Interactions (autocomplete + slash)
@@ -76,7 +78,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       global.__seenInteractions.add(interaction.id);
       setTimeout(() => global.__seenInteractions.delete(interaction.id), 60_000);
     }
-    
+
     await command.execute(interaction);
   } catch (error) {
     console.error('Command error:', error);

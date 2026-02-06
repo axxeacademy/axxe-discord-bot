@@ -172,15 +172,20 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
       const contextChannel = thread ? thread.parent : null;
       await tournamentService.processTournamentMatchResult(matchId, winnerId, contextChannel);
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🏆 Jogo de Torneio #${matchId} Confirmado`)
-        .setDescription(`Vencedor: <@${winnerId}>`)
-        .setColor(0xF1C40F);
+      // [NEW] Update thread name with icon
+      if (thread) {
+        const currentName = thread.name;
+        if (!currentName.includes('✅')) {
+          const newName = currentName.replace(/\s*-\s*/, ' ✅ ').replace(/\s*🚨\s*/, ' ✅ ');
+          await thread.setName(newName).catch(() => { });
+        }
+      }
 
       if (thread) {
         if (thread.archived) await thread.setArchived(false).catch(() => { });
         await thread.send({ embeds: [embed] });
-        await thread.setArchived(true).catch(() => { });
+        // [MODIFIED] Do not archive tournament threads
+        // await thread.setArchived(true).catch(() => { });
       }
       return { ok: true };
     } else {
@@ -327,6 +332,15 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
 
       const footerText = (source === 'manual' && confirmer) ? `Confirmed by ${confirmer}` : (source === 'auto') ? 'Confirmado automaticamente pelo sistema' : null;
       if (footerText) embed.setFooter({ text: footerText });
+
+      // [NEW] Update thread name with icon
+      if (thread) {
+        const currentName = thread.name;
+        if (!currentName.includes('✅')) {
+          const newName = currentName.replace(/\s*-\s*/, ' ✅ ').replace(/\s*🚨\s*/, ' ✅ ');
+          await thread.setName(newName).catch(() => { });
+        }
+      }
 
       if (thread) {
         if (thread.archived) await thread.setArchived(false).catch(() => { });

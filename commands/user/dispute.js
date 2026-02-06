@@ -181,6 +181,17 @@ module.exports = {
         elo: { footerText: `Disputa aberta por ${interaction.user.tag}` },
       });
 
+      // [NEW] Update thread name with icon
+      try {
+        const currentName = thread.name;
+        if (!currentName.includes('🚨')) {
+          const newName = currentName.replace(/\s*-\s*/, ' 🚨 ');
+          await thread.setName(newName);
+        }
+      } catch (nameErr) {
+        console.warn('Could not rename thread to disputed:', nameErr);
+      }
+
       // Send the public notice in thread, then acknowledge user ephemerally
       try {
         await thread.send({ embeds: [embed] });
@@ -230,12 +241,12 @@ module.exports = {
       console.error('❌ Error in /dispute:', err);
       try {
         if (conn) await conn.rollback();
-      } catch {}
+      } catch { }
       try {
         return interaction.editReply({
           content: '❌ Erro ao abrir disputa.',
         });
-      } catch {}
+      } catch { }
     } finally {
       if (conn) conn.release();
     }

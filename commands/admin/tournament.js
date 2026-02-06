@@ -49,6 +49,7 @@ module.exports = {
                 .setName('script')
                 .setDescription('Executar um script de torneio (Battlefy Replicator)')
                 .addIntegerOption(option => option.setName('id').setDescription('ID do Script').setRequired(true))
+                .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #04)').setRequired(false))
         ),
 
     async execute(interaction) {
@@ -159,6 +160,7 @@ module.exports = {
 
             } else if (subcommand === 'script') {
                 const scriptId = interaction.options.getInteger('id');
+                const edition = interaction.options.getString('edition') || null;
                 const db = require('../../utils/db');
 
                 // 1. Fetch Script
@@ -178,7 +180,8 @@ module.exports = {
                     slug,
                     'tournament',
                     'double_elimination',
-                    { created_by: interaction.user.id, script_id: scriptId }
+                    { created_by: interaction.user.id, script_id: scriptId },
+                    edition
                 );
 
                 await interaction.editReply(`ℹ️ Competição criada (#${compId}). A registar ${participantList.length} participantes...`);
@@ -221,8 +224,9 @@ module.exports = {
                 }
 
                 // 4. Start
-                // Use the channel from script if available, else interaction channel
-                const targetChannelId = channelId || interaction.channelId;
+                // Use the channel from script if it's a valid snowflake, else fallback to interaction channel
+                const isSnowflake = (str) => /^\d{17,20}$/.test(str);
+                const targetChannelId = isSnowflake(channelId) ? channelId : interaction.channelId;
                 const targetChannel = await interaction.guild.channels.fetch(targetChannelId);
 
                 await tournamentService.startCompetition(compId, targetChannel);

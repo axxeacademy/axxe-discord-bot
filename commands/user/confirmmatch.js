@@ -52,13 +52,16 @@ module.exports = {
     // [MODIFIED] Do not enforce ladderId here. MatchService handles context resolution.
     // If it's a tournament match, ladderId will be null and that's fine.
 
-    // Parse match id from thread name
+    // Parse match id from context or fallback to thread name
+    const matchContext = await matchService.getMatchContext(thread.id);
     const m = thread.name.match(/match\s*#(\d+)/i);
-    const matchId = m ? Number(m[1]) : NaN;
+    const matchId = matchContext ? matchContext.matchId : (m ? Number(m[1]) : NaN);
+
     if (!Number.isFinite(matchId)) {
       if (deferred) {
+        const fallbackMsg = '❌ Não foi possível identificar o ID do jogo através do título ou contexto.';
         return interaction.editReply({
-          content: languageService.getMessage('pt-PT', 'match_id_from_title_failed'),
+          content: languageService.getMessage('pt-PT', 'match_id_from_title_failed') || fallbackMsg,
         });
       } else {
         return;

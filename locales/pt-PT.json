@@ -23,5 +23,6 @@
   "added_to_queue_detailed": "✅ Você foi adicionado à fila de matchmaking para a ladder {ladderId}! Estamos procurando um oponente na sua faixa de Elo.\n🏆 Seu Elo atual é **{elo}** e você está classificado em **#{rank}**\n🕛 Para verificar o status da fila, por favor escreva **/status**",
   "failed_to_create_dummy_match": "❌ Falha ao criar partida dummy.",
   "error_in_adddummy": "❌ Erro no comando /adddummy.",
-  "adddummy_description": "Criar um oponente dummy e iniciar uma partida de teste"
+  "adddummy_description": "Criar um oponente dummy e iniciar uma partida de teste",
+  "match_id_from_title_failed": "❌ Não foi possível identificar o ID do jogo através do título da thread."
 }

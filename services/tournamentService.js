@@ -147,10 +147,11 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
 
     // --- Generate Winners Bracket ---
     let matchCountInRound = N / 2;
+    let wbMatchCounter = 1;
     for (let r = 1; r <= numRoundsWB; r++) {
         wbMatches[r] = [];
-        const roundSlug = `W${r}`;
         for (let i = 0; i < matchCountInRound; i++) {
+            const roundSlug = `W${wbMatchCounter++}`;
             // Create Empty Match
             const [res] = await execute(
                 'INSERT INTO tournament_matches (competition_id, round, bracket_side, round_slug, status) VALUES (?, ?, ?, ?, "scheduled")',
@@ -177,12 +178,12 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
     const numRoundsLB = 2 * (numRoundsWB - 1);
     if (numRoundsLB > 0) {
         let lbCount = N / 4;
-        let lbRoundNameIndex = 1;
+        let lbMatchCounter = 1;
 
         for (let r = 1; r <= numRoundsLB; r++) {
             lbMatches[r] = [];
-            const roundSlug = `L${r}`;
             for (let i = 0; i < lbCount; i++) {
+                const roundSlug = `L${lbMatchCounter++}`;
                 const [res] = await execute(
                     'INSERT INTO tournament_matches (competition_id, round, bracket_side, round_slug, status) VALUES (?, ?, ?, ?, "scheduled")',
                     [competitionId, r, 'losers', roundSlug]

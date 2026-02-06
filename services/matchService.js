@@ -181,6 +181,11 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
         }
       }
 
+      const embed = new EmbedBuilder()
+        .setTitle(`🏆 Jogo de Torneio #${matchId} Confirmado`)
+        .setDescription(`Vencedor: <@${winnerId}>`)
+        .setColor(0xF1C40F);
+
       if (thread) {
         if (thread.archived) await thread.setArchived(false).catch(() => { });
         await thread.send({ embeds: [embed] });
@@ -436,9 +441,13 @@ async function createMatchThread(
           editionPart = `${editionPart}`; // maybe it's "Cup 1"
         }
       }
-      threadTitle = `${editionPart} | ${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+      const isBye = (player1Gamertag === 'BYE' || player2Gamertag === 'BYE');
+      const separator = isBye ? ' ✅ ' : ' - ';
+      threadTitle = `${editionPart} | ${roundSlug}${separator}${player1Gamertag} vs ${player2Gamertag}`;
     } else {
-      threadTitle = `${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+      const isBye = (player1Gamertag === 'BYE' || player2Gamertag === 'BYE');
+      const separator = isBye ? ' ✅ ' : ' - ';
+      threadTitle = `${roundSlug}${separator}${player1Gamertag} vs ${player2Gamertag}`;
     }
   } else {
     threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;

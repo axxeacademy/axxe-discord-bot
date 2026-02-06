@@ -145,9 +145,10 @@ module.exports = {
       try {
         const currentName = thread.name;
         if (currentName.includes('🚨')) {
-          // Restore normal separator or just remove the icon
-          const newName = currentName.replace(/\s*🚨\s*/, ' - ');
-          await thread.setName(newName);
+          // If after pipe: "| 🚨" -> "|"
+          // If at start: "🚨 Match..." -> "Match..."
+          let newName = currentName.replace(/\|\s*🚨\s*/, '| ').replace(/^\s*🚨\s*/, '');
+          if (newName !== currentName) await thread.setName(newName);
         }
       } catch (nameErr) {
         console.warn('Could not rename thread to pending:', nameErr);

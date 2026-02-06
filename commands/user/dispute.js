@@ -185,8 +185,14 @@ module.exports = {
       try {
         const currentName = thread.name;
         if (!currentName.includes('🚨')) {
-          const newName = currentName.replace(/\s*-\s*/, ' 🚨 ');
-          await thread.setName(newName);
+          let newName;
+          if (currentName.includes('|')) {
+            newName = currentName.replace(/\|\s*/, '| 🚨 ').replace(/\s*✅\s*/, ' ');
+          } else {
+            // For ladder matches without pipe: Match #123 - ...
+            newName = `🚨 ${currentName.replace(/\s*✅\s*/, ' ')}`;
+          }
+          if (newName !== currentName) await thread.setName(newName);
         }
       } catch (nameErr) {
         console.warn('Could not rename thread to disputed:', nameErr);

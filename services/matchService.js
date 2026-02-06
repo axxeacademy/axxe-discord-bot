@@ -451,32 +451,27 @@ async function createMatchThread(
     const icon = isBye ? '✅ ' : '';
     threadTitle = `${editionPart} | ${icon}${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
   } else {
-    const isBye = (player1Gamertag === 'BYE' || player2Gamertag === 'BYE');
-    const icon = isBye ? '✅ ' : '';
-    threadTitle = `${icon}${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
+    threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
   }
-} else {
-  threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
-}
 
-const thread = await channel.threads.create({
-  name: threadTitle,
-  autoArchiveDuration: 60,
-  reason: 'Match thread created',
-  type: 12,
-});
+  const thread = await channel.threads.create({
+    name: threadTitle,
+    autoArchiveDuration: 60,
+    reason: 'Match thread created',
+    type: 12,
+  });
 
-if (thread.joinable) {
-  try { await thread.join(); } catch { }
-}
+  if (thread.joinable) {
+    try { await thread.join(); } catch { }
+  }
 
-await registerMatchThread(thread.id, matchId, type);
-await notifyLadderAdminsNewGame(thread, threadTitle);
+  await registerMatchThread(thread.id, matchId, type);
+  await notifyLadderAdminsNewGame(thread, threadTitle);
 
-await thread.send(`Jogo #${matchId} iniciado entre ${player1DiscordId ? `<@${player1DiscordId}>` : player1Gamertag} e ${player2DiscordId ? `<@${player2DiscordId}>` : player2Gamertag}.`);
-await thread.send('Use `/reportmatch` para reportar o resultado do jogo quando terminar.');
+  await thread.send(`Jogo #${matchId} iniciado entre ${player1DiscordId ? `<@${player1DiscordId}>` : player1Gamertag} e ${player2DiscordId ? `<@${player2DiscordId}>` : player2Gamertag}.`);
+  await thread.send('Use `/reportmatch` para reportar o resultado do jogo quando terminar.');
 
-return thread;
+  return thread;
 }
 
 /**

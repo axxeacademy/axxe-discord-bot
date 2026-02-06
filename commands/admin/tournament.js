@@ -209,7 +209,7 @@ module.exports = {
                     } else {
                         // Create dummy
                         const fakeDid = `dummy-${Date.now()}-${Math.random()}`;
-                        const [ins] = await db.execute('INSERT INTO users (discord_id, username, is_bot) VALUES (?, ?, 1)', [fakeDid, pName]);
+                        const [ins] = await db.execute('INSERT INTO users (discord_id, username, is_in_server) VALUES (?, ?, 0)', [fakeDid, pName]);
                         userId = ins.insertId;
                     }
 

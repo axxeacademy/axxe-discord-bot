@@ -40,20 +40,35 @@ module.exports = {
             sub
                 .setName('register')
                 .setDescription('Registar um jogador num torneio')
-                .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição').setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('competition_id')
+                        .setDescription('ID da competição')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
                 .addUserOption(option => option.setName('user').setDescription('O utilizador a registar').setRequired(true))
         )
         .addSubcommand(sub =>
             sub
                 .setName('start')
                 .setDescription('Iniciar o torneio (Gera a Bracket)')
-                .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição').setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('competition_id')
+                        .setDescription('ID da competição')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
         )
         .addSubcommand(sub =>
             sub
                 .setName('status')
                 .setDescription('Ver estado do torneio')
-                .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição').setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('competition_id')
+                        .setDescription('ID da competição')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
         )
         .addSubcommand(sub =>
             sub
@@ -83,6 +98,19 @@ module.exports = {
         } else if (focusedOption.name === 'season') {
             const [rows] = await execute('SELECT id, name, slug FROM seasons ORDER BY created_at DESC LIMIT 10');
             choices = rows.map(r => ({ name: r.name || r.slug, value: String(r.id) }));
+        } else if (focusedOption.name === 'competition_id') {
+            // Show last 5 competitions that are NOT active or completed
+            const [rows] = await execute(
+                `SELECT id, name, status, edition 
+                 FROM competitions 
+                 WHERE status NOT IN ('active', 'completed', 'archived') 
+                 ORDER BY created_at DESC 
+                 LIMIT 5`
+            );
+            choices = rows.map(r => ({
+                name: `#${r.id} - ${r.name}${r.edition ? ` (${r.edition})` : ''} [${r.status}]`,
+                value: r.id
+            }));
         }
 
         const filtered = choices.filter(choice =>

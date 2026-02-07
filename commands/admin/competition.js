@@ -99,6 +99,22 @@ module.exports = {
                 .setDescription('Executar um script de torneio (Battlefy Replicator)')
                 .addIntegerOption(option => option.setName('id').setDescription('ID do Script').setRequired(true))
                 .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição (Opcional - para re-executar)').setRequired(false))
+        )
+        .addSubcommand(sub =>
+            sub
+                .setName('delete')
+                .setDescription('Eliminar uma competição e todos os seus dados permanentemente')
+                .addIntegerOption(option =>
+                    option.setName('competition_id')
+                        .setDescription('ID da competição a eliminar')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
+                .addBooleanOption(option =>
+                    option.setName('confirm')
+                        .setDescription('Confirmar eliminação permanente')
+                        .setRequired(true)
+                )
         ),
 
     async autocomplete(interaction) {
@@ -377,6 +393,16 @@ module.exports = {
                     `**Participantes registados**: ${registeredCount}\n\n` +
                     `Use \`/competition bracket\` para gerar o seeding e depois \`/competition start\` para iniciar.`
                 );
+            } else if (subcommand === 'delete') {
+                const compId = interaction.options.getInteger('competition_id');
+                const confirm = interaction.options.getBoolean('confirm');
+
+                if (!confirm) {
+                    return interaction.editReply('❌ Deves confirmar a eliminação definindo `confirm: True`.');
+                }
+
+                await tournamentService.deleteCompetition(compId);
+                return interaction.editReply(`🗑️ Competição #${compId} e todos os seus dados (jogos, participantes, seeds) foram eliminados com sucesso.`);
             }
 
         } catch (error) {

@@ -606,11 +606,32 @@ async function generateSeeding(competitionId, seedingType, ladderId = null) {
     };
 }
 
+/**
+ * Delete a competition and all its related data.
+ */
+async function deleteCompetition(competitionId) {
+    // 1. Check if it exists
+    const [rows] = await execute('SELECT id FROM competitions WHERE id = ?', [competitionId]);
+    if (!rows.length) throw new Error('Competição não encontrada');
+
+    // 2. Delete matches
+    await execute('DELETE FROM tournament_matches WHERE competition_id = ?', [competitionId]);
+
+    // 3. Delete participants
+    await execute('DELETE FROM tournament_participants WHERE competition_id = ?', [competitionId]);
+
+    // 4. Delete competition
+    await execute('DELETE FROM competitions WHERE id = ?', [competitionId]);
+
+    console.log(`[Tournament] Competition #${competitionId} and all associated data deleted.`);
+}
+
 module.exports = {
     createCompetition,
     registerParticipant,
     startCompetition,
     processTournamentMatchResult,
     checkAndCreateThread,
-    generateSeeding
+    generateSeeding,
+    deleteCompetition
 };

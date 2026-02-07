@@ -17,15 +17,15 @@ async function getActiveSeasonId() {
 /**
  * Create a new competition.
  */
-async function createCompetition(name, slug, type, format, settings = {}, edition = null) {
+async function createCompetition(name, slug, type, format, settings = {}, edition = null, startDate = null, startTime = null) {
     const settingsJson = JSON.stringify(settings);
 
     // Auto-detect active season if not provided
     const seasonId = await getActiveSeasonId();
 
     const [result] = await execute(
-        'INSERT INTO competitions (name, slug, type, format, settings, status, edition, season_id) VALUES (?, ?, ?, ?, ?, "draft", ?, ?)',
-        [name, slug, type, format, settingsJson, edition, seasonId]
+        'INSERT INTO competitions (name, slug, type, format, settings, status, edition, season_id, start_date, start_time) VALUES (?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)',
+        [name, slug, type, format, settingsJson, edition, seasonId, startDate, startTime]
     );
     return result.insertId;
 }
@@ -76,15 +76,16 @@ async function startCompetition(competitionId, channel) {
 
     if (comp.status === 'active') throw new Error('Already active');
 
+    // Update status to active IMMEDIATELY to prevent "draft" ghosting
+    await execute('UPDATE competitions SET status = "active" WHERE id = ?', [competitionId]);
+    console.log(`[Tournament] Competition #${competitionId} set to ACTIVE. Generating bracket...`);
+
     // Create bracket structure based on format
     if (comp.format === 'double_elimination') {
         await generateDoubleEliminationBracket(competitionId, channel);
     } else {
         throw new Error(`Format ${comp.format} not fully implemented.`);
     }
-
-    // Update status
-    await execute('UPDATE competitions SET status = "active" WHERE id = ?', [competitionId]);
 }
 
 /**

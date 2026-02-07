@@ -24,6 +24,8 @@ module.exports = {
                         )
                 )
                 .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #03)').setRequired(false))
+                .addStringOption(option => option.setName('start_date').setDescription('Data de início (YYYY-MM-DD)').setRequired(false))
+                .addStringOption(option => option.setName('start_time').setDescription('Hora de início (HH:MM)').setRequired(false))
         )
         .addSubcommand(sub =>
             sub
@@ -49,7 +51,7 @@ module.exports = {
                 .setName('script')
                 .setDescription('Executar um script de torneio (Battlefy Replicator)')
                 .addIntegerOption(option => option.setName('id').setDescription('ID do Script').setRequired(true))
-                .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #04)').setRequired(false))
+                .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição (Opcional - para re-executar)').setRequired(false))
         ),
 
     async execute(interaction) {
@@ -65,10 +67,12 @@ module.exports = {
                 const slug = interaction.options.getString('slug');
                 const format = interaction.options.getString('format');
                 const edition = interaction.options.getString('edition') || null;
+                const startDate = interaction.options.getString('start_date') || null;
+                const startTime = interaction.options.getString('start_time') || null;
 
-                const id = await tournamentService.createCompetition(name, slug, 'tournament', format, { created_by: interaction.user.id }, edition);
+                const id = await tournamentService.createCompetition(name, slug, 'tournament', format, { created_by: interaction.user.id }, edition, startDate, startTime);
 
-                return interaction.editReply(`✅ Competição "${name}" criada com ID: **${id}**${edition ? ` (Edição ${edition})` : ''}`);
+                return interaction.editReply(`✅ Competição "${name}" criada com ID: **${id}**${edition ? ` (Edição ${edition})` : ''}${startDate ? ` agendada para ${startDate}` : ''}`);
 
             } else if (subcommand === 'register') {
                 const compId = interaction.options.getInteger('competition_id');
@@ -160,7 +164,7 @@ module.exports = {
 
             } else if (subcommand === 'script') {
                 const scriptId = interaction.options.getInteger('id');
-                const edition = interaction.options.getString('edition') || null;
+                const existingCompId = interaction.options.getInteger('competition_id');
                 const db = require('../../utils/db');
 
                 // 1. Fetch Script
@@ -168,21 +172,26 @@ module.exports = {
                 if (!rows.length) return interaction.editReply('❌ Script não encontrado.');
                 const script = rows[0];
 
-                const participants = script.participants; // JSON column is auto-parsed by mysql2 usually, or string
+                const participants = script.participants; // JSON column
                 const participantList = (typeof participants === 'string') ? JSON.parse(participants) : participants;
                 const channelId = script.channel_id;
+                const edition = script.edition; // PULL EDITION FROM SCRIPT
 
-                // 2. Create Competition
-                const name = `Battlefy Rep #${scriptId}`;
-                const slug = `battlefy-${scriptId}-${Date.now()}`;
-                const compId = await tournamentService.createCompetition(
-                    name,
-                    slug,
-                    'tournament',
-                    'double_elimination',
-                    { created_by: interaction.user.id, script_id: scriptId },
-                    edition
-                );
+                let compId = existingCompId;
+
+                // 2. Create Competition if not provided
+                if (!compId) {
+                    const name = `Battlefy Rep #${scriptId}`;
+                    const slug = `battlefy-${scriptId}-${Date.now()}`;
+                    compId = await tournamentService.createCompetition(
+                        name,
+                        slug,
+                        'tournament',
+                        'double_elimination',
+                        { created_by: interaction.user.id, script_id: scriptId },
+                        edition
+                    );
+                }
 
                 await interaction.editReply(`ℹ️ Competição criada (#${compId}). A registar ${participantList.length} participantes...`);
 

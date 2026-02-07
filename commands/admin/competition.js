@@ -27,6 +27,7 @@ module.exports = {
                         .setAutocomplete(true)
                 )
                 .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #03)').setRequired(false))
+                .addChannelOption(option => option.setName('channel').setDescription('Canal onde o torneio será jogado').setRequired(false))
                 .addStringOption(option =>
                     option.setName('season')
                         .setDescription('Temporada (ex: 24/25)')
@@ -164,6 +165,7 @@ module.exports = {
                 const seasonIdString = interaction.options.getString('season');
                 const startDate = interaction.options.getString('start_date') || null;
                 const startTime = interaction.options.getString('start_time') || null;
+                const channel = interaction.options.getChannel('channel');
 
                 const seasonId = seasonIdString ? parseInt(seasonIdString) : null;
 
@@ -176,7 +178,8 @@ module.exports = {
                     { created_by: interaction.user.id },
                     edition,
                     startDate,
-                    startTime
+                    startTime,
+                    channel?.id
                 );
 
                 // If seasonId was provided specifically, we need to update it because createCompetition defaults to active one
@@ -202,8 +205,22 @@ module.exports = {
 
             } else if (subcommand === 'start') {
                 const compId = interaction.options.getInteger('competition_id');
-                await tournamentService.startCompetition(compId, interaction.channel);
-                return interaction.editReply(`🚀 Competição #${compId} iniciada! A bracket foi gerada.`);
+
+                // Fetch competition to check for stored channel
+                const [rows] = await execute('SELECT discord_channel_id FROM competitions WHERE id = ?', [compId]);
+                let targetChannel = interaction.channel;
+
+                if (rows.length && rows[0].discord_channel_id) {
+                    try {
+                        const fetchedChannel = await interaction.guild.channels.fetch(rows[0].discord_channel_id);
+                        if (fetchedChannel) targetChannel = fetchedChannel;
+                    } catch (e) {
+                        console.warn(`[Competition] Could not fetch stored channel ${rows[0].discord_channel_id}, using current.`);
+                    }
+                }
+
+                await tournamentService.startCompetition(compId, targetChannel);
+                return interaction.editReply(`🚀 Competição #${compId} iniciada no canal <#${targetChannel.id}>! A bracket foi gerada.`);
 
             } else if (subcommand === 'status') {
                 const compId = interaction.options.getInteger('competition_id');
@@ -316,7 +333,10 @@ module.exports = {
                         'tournament',
                         'double_elimination',
                         { created_by: interaction.user.id, script_id: scriptId },
-                        edition
+                        edition,
+                        null,
+                        null,
+                        channelId
                     );
                 }
 

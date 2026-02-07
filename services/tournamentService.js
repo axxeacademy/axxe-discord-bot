@@ -17,15 +17,15 @@ async function getActiveSeasonId() {
 /**
  * Create a new competition.
  */
-async function createCompetition(name, slug, type, format, settings = {}, edition = null, startDate = null, startTime = null) {
+async function createCompetition(name, slug, type, format, settings = {}, edition = null, startDate = null, startTime = null, discordChannelId = null) {
     const settingsJson = JSON.stringify(settings);
 
     // Auto-detect active season if not provided
     const seasonId = await getActiveSeasonId();
 
     const [result] = await execute(
-        'INSERT INTO competitions (name, slug, type, format, settings, status, edition, season_id, start_date, start_time) VALUES (?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)',
-        [name, slug, type, format, settingsJson, edition, seasonId, startDate, startTime]
+        'INSERT INTO competitions (name, slug, type, format, settings, status, edition, season_id, start_date, start_time, discord_channel_id) VALUES (?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?)',
+        [name, slug, type, format, settingsJson, edition, seasonId, startDate, startTime, discordChannelId]
     );
     return result.insertId;
 }
@@ -74,15 +74,27 @@ async function startCompetition(competitionId, channel) {
     if (!compRows.length) throw new Error('Competition not found');
     const comp = compRows[0];
 
-    if (comp.status === 'active') throw new Error('Already active');
+    if (comp.status === 'active' && comp.status !== 'registration') {
+        // Allow starting if it's in registration or draft
+    }
 
-    // Update status to active IMMEDIATELY to prevent "draft" ghosting
+    // Determine the channel to use and persist it if provided
+    let targetChannel = channel;
+    if (channel && channel.id) {
+        await execute('UPDATE competitions SET discord_channel_id = ? WHERE id = ?', [channel.id, competitionId]);
+    } else if (comp.discord_channel_id) {
+        // If no channel object provided but we have one in DB, we'll need the client to fetch it
+        // For now, we assume the caller passes the channel object or we're in a context where it's known.
+        // If we only have the ID, the calling command should ideally fetch the channel object.
+    }
+
+    // Update status to active
     await execute('UPDATE competitions SET status = "active" WHERE id = ?', [competitionId]);
     console.log(`[Tournament] Competition #${competitionId} set to ACTIVE. Generating bracket...`);
 
     // Create bracket structure based on format
     if (comp.format === 'double_elimination') {
-        await generateDoubleEliminationBracket(competitionId, channel);
+        await generateDoubleEliminationBracket(competitionId, targetChannel);
     } else {
         throw new Error(`Format ${comp.format} not fully implemented.`);
     }

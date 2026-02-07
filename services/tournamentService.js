@@ -398,6 +398,35 @@ async function processTournamentMatchResult(matchId, winnerId, channel) {
         const readyCol = match.next_match_loss_slot === 2 ? 'p2_ready' : 'p1_ready';
         await execute(`UPDATE tournament_matches SET ${slotCol} = ?, ${readyCol} = 1 WHERE id = ?`, [loserId, match.next_match_loss]);
     } else if (loserId) {
+        // Elimination Logic
+        // Special Case: Grand Final Reset for Double Elimination
+        if (match.bracket_side === 'grand_final' && match.round_slug === 'GF') {
+            // In a true double elim, the player from Winners Bracket (p1) must lose twice.
+            // If p1 (WB winner) loses to p2 (LB winner), we need a reset match.
+            // Current setup: p1 is ALWAYS from WB (slot 1), p2 from LB (slot 2) in generateDoubleEliminationBracket
+
+            // Check if loser was the player from Winners Bracket (player1_id)
+            if (loserId === match.player1_id) {
+                console.log(`[Tournament] UPSET in Grand Final! WB Winner lost. Triggering Bracket Reset.`);
+
+                // Create GF Reset Match
+                const [res] = await execute(
+                    'INSERT INTO tournament_matches (competition_id, round, bracket_side, round_slug, status, player1_id, player2_id, p1_ready, p2_ready) VALUES (?, ?, ?, ?, "scheduled", ?, ?, 1, 1)',
+                    [match.competition_id, match.round + 1, 'grand_final', 'GF Reset', match.player1_id, match.player2_id]
+                );
+
+                const resetMatchId = res.insertId;
+
+                // If channel provided, create thread immediately
+                if (channel) {
+                    await checkAndCreateThread(channel, resetMatchId);
+                }
+
+                // Return early, do not mark as eliminated yet
+                return { success: true, resetTriggered: true };
+            }
+        }
+
         await execute('UPDATE tournament_participants SET status = "eliminated" WHERE user_id = ? AND competition_id = ?', [loserId, match.competition_id]);
     }
 

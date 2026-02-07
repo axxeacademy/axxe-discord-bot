@@ -33,12 +33,12 @@ function formatDelta(n, checkpoint = false) {
  *    }
  */
 function buildMatchEmbed(p) {
-  const { state, matchId, p1, p2, scores = {}, scoreLineOverride, elo } = p;
+  const { state, matchId, p1, p2, scores = {}, scoreLineOverride, elo, showElo = true } = p;
 
   const title =
     state === 'confirmed' ? `🆚 Jogo #${matchId} Confirmado` :
-    state === 'reported'  ? `📝 Jogo #${matchId} Reportado`  :
-                            `⚠️ Jogo #${matchId} em Disputa`;
+      state === 'reported' ? `📝 Jogo #${matchId} Reportado` :
+        `⚠️ Jogo #${matchId} em Disputa`;
 
   const color =
     state === 'confirmed'
@@ -55,7 +55,7 @@ function buildMatchEmbed(p) {
     .setTimestamp()
     .setColor(color);
 
-  if (state === 'confirmed' && elo) {
+  if (state === 'confirmed' && elo && showElo) {
     const p1DeltaText = elo.p1DeltaText ?? formatDelta(elo.p1Delta, !!elo.p1Checkpoint);
     const p2DeltaText = elo.p2DeltaText ?? formatDelta(elo.p2Delta, !!elo.p2Checkpoint);
 
@@ -79,7 +79,7 @@ function buildMatchEmbed(p) {
     );
 
     if (elo.footerText) embed.setFooter({ text: elo.footerText });
-  } else {
+  } else if (showElo) {
     // Non-confirmed — same structure but neutral Elo
     embed.addFields(
       {
@@ -94,6 +94,21 @@ function buildMatchEmbed(p) {
       }
     );
     // Optional footer (e.g., "Reportado por X", "Disputa aberta por Y")
+    if (elo?.footerText) embed.setFooter({ text: elo.footerText });
+  } else {
+    // No Elo - Just Names
+    embed.addFields(
+      {
+        name: p1.gamertag,
+        value: `${p1.icon ? `${p1.icon} ` : ''}${p1.mention}`,
+        inline: true
+      },
+      {
+        name: p2.gamertag,
+        value: `${p2.icon ? `${p2.icon} ` : ''}${p2.mention}`,
+        inline: true
+      }
+    );
     if (elo?.footerText) embed.setFooter({ text: elo.footerText });
   }
 

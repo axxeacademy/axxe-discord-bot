@@ -181,10 +181,25 @@ async function confirmMatch(client, inputMatchId, ladderId, thread, options = {}
         }
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🏆 Jogo de Torneio #${matchId} Confirmado`)
-        .setDescription(`Vencedor: <@${winnerId}>`)
-        .setColor(0xF1C40F);
+      // Fetch info for consistent embed
+      const { buildMatchEmbed } = require('./matchMessages');
+      const [[p1User]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [match.player1_id]);
+      const [[p2User]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [match.player2_id]);
+
+      const p1Gamertag = p1User?.gamertag || p1User?.username || 'Player 1';
+      const p2Gamertag = p2User?.gamertag || p2User?.username || 'Player 2';
+      const p1Mention = p1User?.discord_id ? `<@${p1User.discord_id}>` : p1Gamertag;
+      const p2Mention = p2User?.discord_id ? `<@${p2User.discord_id}>` : p2Gamertag;
+
+      const embed = buildMatchEmbed({
+        state: 'confirmed',
+        matchId: matchId,
+        p1: { gamertag: p1Gamertag, mention: p1Mention },
+        p2: { gamertag: p2Gamertag, mention: p2Mention },
+        scores: { s1: match.player1_score, s2: match.player2_score, pen1: match.penalty_score1, pen2: match.penalty_score2 },
+        elo: { footerText: `Confirmado por ${confirmer || 'Admin'}` }, // Generic footer, no Elo stats
+        showElo: false
+      });
 
       if (thread) {
         if (thread.archived) await thread.setArchived(false).catch(() => { });

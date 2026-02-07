@@ -12,16 +12,16 @@ const confirmationTimers = new Map();
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('reportmatch')
-    .setDescription('Reportar o resultado de um jogo contra outro jogador.')
+    .setDescription('Reportar o resultado de um jogo (Resultado Jogador 1 vs Resultado Jogador 2).')
     .setDMPermission(false)
     .addIntegerOption(option =>
-      option.setName('yourscore').setDescription('O seu resultado').setRequired(true))
+      option.setName('score_player1').setDescription('Golos/Pontos do Jogador 1 (Home/Cima)').setRequired(true))
     .addIntegerOption(option =>
-      option.setName('opponentscore').setDescription('Resultado do adversário').setRequired(true))
+      option.setName('score_player2').setDescription('Golos/Pontos do Jogador 2 (Away/Baixo)').setRequired(true))
     .addIntegerOption(option =>
-      option.setName('penaltyscore1').setDescription('Pontuação de penalidade do jogador 1 (opcional)').setRequired(false))
+      option.setName('penalty_player1').setDescription('Penalties do Jogador 1 (Opcional)').setRequired(false))
     .addIntegerOption(option =>
-      option.setName('penaltyscore2').setDescription('Pontuação de penalidade do jogador 2 (opcional)').setRequired(false)),
+      option.setName('penalty_player2').setDescription('Penalties do Jogador 2 (Opcional)').setRequired(false)),
 
   async execute(interaction) {
     const now = Date.now();
@@ -46,16 +46,16 @@ module.exports = {
       const finalMatchId = matchContext ? matchContext.matchId : matchId;
       const type = matchContext ? matchContext.type : 'ladder'; // Default to ladder if unknown (Legacy)
 
-      const score1 = interaction.options.getInteger('yourscore');
-      const score2 = interaction.options.getInteger('opponentscore');
-      const penaltyScore1Raw = interaction.options.getInteger('penaltyscore1');
-      const penaltyScore2Raw = interaction.options.getInteger('penaltyscore2');
+      const s1 = interaction.options.getInteger('score_player1');
+      const s2 = interaction.options.getInteger('score_player2');
+      const p1Raw = interaction.options.getInteger('penalty_player1');
+      const p2Raw = interaction.options.getInteger('penalty_player2');
       const reporterDiscordId = interaction.user.id;
       const reporterTag = interaction.user.tag;
 
       const norm = v => (v === undefined || v === null ? null : Number(v));
-      let penaltyScore1 = norm(penaltyScore1Raw);
-      let penaltyScore2 = norm(penaltyScore2Raw);
+      let penaltyScore1 = norm(p1Raw);
+      let penaltyScore2 = norm(p2Raw);
 
       // Fetch Match Data
       let match = null;
@@ -67,7 +67,6 @@ module.exports = {
         if (rows.length > 0) match = rows[0];
       } else {
         // Ladder lookup
-        // We might still need ladderId for updates, try to fetch it
         try {
           if (interaction.channel.isThread()) ladderId = await getLadderIdByChannel(interaction.channel.parentId);
           if (!ladderId) ladderId = await getLadderIdByChannel(interaction.channel.id);
@@ -126,10 +125,8 @@ module.exports = {
         return interaction.editReply({ content: '❌ Você não participa neste jogo e não é administrador.' });
       }
 
-      const opponentPlayerId = reporterIsPlayer1 ? match.player2_id : match.player1_id;
-
-      // Penalties rules
-      if (score1 !== score2) {
+      // Penalties validation
+      if (s1 !== s2) {
         penaltyScore1 = null;
         penaltyScore2 = null;
       } else {
@@ -137,31 +134,22 @@ module.exports = {
           return interaction.editReply({ content: '❌ Jogo empatado no tempo regulamentar. Tem de indicar as penalidades.' });
         }
         if (penaltyScore1 === penaltyScore2) {
-          return interaction.editReply({ content: '❌ Empates não são permitidos.' });
+          return interaction.editReply({ content: '❌ Empates não são permitidos nos penalties.' });
         }
       }
 
-      // Prepare Update
-      let realP1Score, realP2Score, realP1Pen, realP2Pen;
-
-      if (isAdmin && !reporterIsPlayer1 && !reporterIsPlayer2) {
-        realP1Score = score1;
-        realP2Score = score2;
-        realP1Pen = penaltyScore1;
-        realP2Pen = penaltyScore2;
-      } else {
-        realP1Score = reporterIsPlayer1 ? score1 : score2;
-        realP2Score = reporterIsPlayer1 ? score2 : score1;
-        realP1Pen = reporterIsPlayer1 ? penaltyScore1 : penaltyScore2;
-        realP2Pen = reporterIsPlayer1 ? penaltyScore2 : penaltyScore1;
-      }
+      // Scores are absolute now - No swapping needed
+      const realP1Score = s1;
+      const realP2Score = s2;
+      const realP1Pen = penaltyScore1;
+      const realP2Pen = penaltyScore2;
 
       if (isTournament) {
         await execute(
           `UPDATE tournament_matches
-             SET player1_score = ?, player2_score = ?, reported_by = ?, status = 'pending_confirmation', reported_at = NOW()
+             SET player1_score = ?, player2_score = ?, penalty_score1 = ?, penalty_score2 = ?, reported_by = ?, status = 'pending_confirmation', reported_at = NOW()
              WHERE id = ?`,
-          [realP1Score, realP2Score, reporterPlayerId || null, finalMatchId]
+          [realP1Score, realP2Score, realP1Pen, realP2Pen, reporterPlayerId || null, finalMatchId]
         );
       } else {
         const values = [realP1Score, realP2Score, realP1Pen, realP2Pen, 'pending', reporterPlayerId, finalMatchId, ladderId];
@@ -176,14 +164,14 @@ module.exports = {
         }
       }
 
-      // Re-read for embed
-      const targetOpponentId = opponentPlayerId || (reporterIsPlayer1 ? match.player2_id : match.player1_id);
-      const [[opp]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [targetOpponentId]);
+      // Fetch Players INFO (Securely)
+      const [[p1User]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [match.player1_id]);
+      const [[p2User]] = await execute('SELECT id, gamertag, username, discord_id FROM users WHERE id = ?', [match.player2_id]);
 
-      const p1Gamertag = me?.id === match.player1_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 1');
-      const p2Gamertag = me?.id === match.player2_id ? (me.gamertag || me.username) : (opp?.gamertag || opp?.username || 'Player 2');
-      const p1Mention = me?.id === match.player1_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p1Gamertag);
-      const p2Mention = me?.id === match.player2_id ? `<@${me.discord_id}>` : (opp?.discord_id ? `<@${opp.discord_id}>` : p2Gamertag);
+      const p1Gamertag = p1User?.gamertag || p1User?.username || 'Player 1';
+      const p2Gamertag = p2User?.gamertag || p2User?.username || 'Player 2';
+      const p1Mention = p1User?.discord_id ? `<@${p1User.discord_id}>` : p1Gamertag;
+      const p2Mention = p2User?.discord_id ? `<@${p2User.discord_id}>` : p2Gamertag;
 
       const embed = buildMatchEmbed({
         state: 'reported',
@@ -191,12 +179,18 @@ module.exports = {
         p1: { gamertag: p1Gamertag, mention: p1Mention },
         p2: { gamertag: p2Gamertag, mention: p2Mention },
         scores: { s1: realP1Score, s2: realP2Score, pen1: realP1Pen, pen2: realP2Pen },
-        elo: { footerText: `Reportado por ${reporterTag}` }
+        elo: { footerText: `Reportado por ${reporterTag}` },
+        showElo: !isTournament // [NEW] Hide Elo for tournaments
       });
 
       await interaction.editReply({ embeds: [embed] });
 
-      const mention = opp?.discord_id ? `<@${opp.discord_id}>` : (opp?.username || 'oponente');
+      // Notify opponent (if not admin reporting for them)
+      let mention = 'Participantes';
+      if (reporterIsPlayer1 && p2User?.discord_id) mention = `<@${p2User.discord_id}>`;
+      if (reporterIsPlayer2 && p1User?.discord_id) mention = `<@${p1User.discord_id}>`;
+      if (!reporterIsPlayer1 && !reporterIsPlayer2) mention = 'Participantes';
+
       await interaction.channel.send(
         `📝 O resultado do jogo foi reportado por <@${reporterDiscordId}>.\n` +
         `Por favor, ${mention}, confirme o resultado usando \`/confirmmatch\`.\n` +

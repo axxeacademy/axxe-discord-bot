@@ -441,6 +441,50 @@ async function processTournamentMatchResult(matchId, winnerId, channel) {
         }
     }
 
+    // --- COMPLETION LOGIC ---
+    // Check if tournament is finished
+    // Condition: No next_match_win for the winner match, and it's a final bracket side/round slug
+    const isFinalMatch = !match.next_match_win && (
+        match.round_slug === 'GF Reset' || // Double Elim Reset finished
+        (match.round_slug === 'GF' && winnerId === match.player1_id) || // Double Elim GF (WB wins)
+        match.bracket_side === 'grand_final' || // General final catch
+        (match.bracket_side === 'winners' && !match.next_match_win && !match.next_match_loss) // Single Elim final
+    );
+
+    if (isFinalMatch && winnerId) {
+        console.log(`[Tournament] Competition #${match.competition_id} concluded! Winner: ${winnerId}`);
+
+        // 1. Update competition status
+        await execute(
+            'UPDATE competitions SET status = "completed", winner_id = ? WHERE id = ?',
+            [winnerId, match.competition_id]
+        );
+
+        // 2. Set participant status to winner
+        await execute(
+            'UPDATE tournament_participants SET status = "winner" WHERE competition_id = ? AND user_id = ?',
+            [match.competition_id, winnerId]
+        );
+
+        // 3. Announcement
+        if (channel) {
+            const winner = await getUserDetails(winnerId);
+            const winnerName = winner ? (winner.gamertag || winner.username) : 'Desconhecido';
+            const winnerMention = winner?.discord_id ? `<@${winner.discord_id}>` : `**${winnerName}**`;
+
+            const { EmbedBuilder } = require('discord.js');
+            const endEmbed = new EmbedBuilder()
+                .setTitle('🏆 Torneio Concluído!')
+                .setDescription(`Parabéns ao grande vencedor: ${winnerMention}! 🥇`)
+                .addFields({ name: 'Vencedor', value: winnerName, inline: true })
+                .setColor(0xF1C40F)
+                .setTimestamp()
+                .setFooter({ text: 'Tournament System' });
+
+            await channel.send({ content: `🎊 **O Torneio Terminou!** ${winnerMention} é o campeão!`, embeds: [endEmbed] });
+        }
+    }
+
     return { success: true };
 }
 

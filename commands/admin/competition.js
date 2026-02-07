@@ -72,6 +72,28 @@ module.exports = {
         )
         .addSubcommand(sub =>
             sub
+                .setName('bracket')
+                .setDescription('Gerar seeding para a competição')
+                .addIntegerOption(option =>
+                    option.setName('competition_id')
+                        .setDescription('ID da competição')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
+                .addStringOption(option =>
+                    option.setName('seeding_type')
+                        .setDescription('Tipo de seeding')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
+                .addIntegerOption(option =>
+                    option.setName('ladder_id')
+                        .setDescription('ID da ladder (obrigatório para seeding por ladder)')
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand(sub =>
+            sub
                 .setName('script')
                 .setDescription('Executar um script de torneio (Battlefy Replicator)')
                 .addIntegerOption(option => option.setName('id').setDescription('ID do Script').setRequired(true))
@@ -111,6 +133,12 @@ module.exports = {
                 name: `#${r.id} - ${r.name}${r.edition ? ` (${r.edition})` : ''} [${r.status}]`,
                 value: r.id
             }));
+        } else if (focusedOption.name === 'seeding_type') {
+            choices = [
+                { name: 'Por Data de Registo', value: 'registration' },
+                { name: 'Por Classificação da Ladder', value: 'ladder' },
+                { name: 'Aleatório', value: 'random' }
+            ];
         }
 
         const filtered = choices.filter(choice =>
@@ -218,6 +246,52 @@ module.exports = {
                 }
                 if (statusMsg.length > 2000) statusMsg = statusMsg.substring(0, 1990) + '...';
                 return interaction.editReply(statusMsg);
+
+            } else if (subcommand === 'bracket') {
+                const compId = interaction.options.getInteger('competition_id');
+                const seedingType = interaction.options.getString('seeding_type');
+                const ladderId = interaction.options.getInteger('ladder_id');
+
+                // Validate ladder_id if seeding_type is 'ladder'
+                if (seedingType === 'ladder' && !ladderId) {
+                    return interaction.editReply('❌ O ID da ladder é obrigatório para seeding por classificação.');
+                }
+
+                try {
+                    const result = await tournamentService.generateSeeding(compId, seedingType, ladderId);
+
+                    // Fetch seeded participants to show the result
+                    const [participants] = await execute(
+                        `SELECT tp.seed, u.gamertag, u.username 
+                         FROM tournament_participants tp
+                         JOIN users u ON tp.user_id = u.id
+                         WHERE tp.competition_id = ?
+                         ORDER BY tp.seed ASC`,
+                        [compId]
+                    );
+
+                    let seedingTypeLabel = '';
+                    switch (seedingType) {
+                        case 'registration': seedingTypeLabel = 'Data de Registo'; break;
+                        case 'ladder': seedingTypeLabel = 'Classificação da Ladder'; break;
+                        case 'random': seedingTypeLabel = 'Aleatório'; break;
+                    }
+
+                    let message = `✅ Seeding gerado com sucesso!\n\n**Tipo**: ${seedingTypeLabel}\n**Participantes**: ${result.participantCount}\n\n**Seeds:**\n`;
+
+                    participants.forEach(p => {
+                        const name = p.gamertag || p.username;
+                        message += `${p.seed}. ${name}\n`;
+                    });
+
+                    if (message.length > 2000) {
+                        message = message.substring(0, 1990) + '...';
+                    }
+
+                    return interaction.editReply(message);
+                } catch (error) {
+                    return interaction.editReply(`❌ Erro ao gerar seeding: ${error.message}`);
+                }
 
             } else if (subcommand === 'script') {
                 const scriptId = interaction.options.getInteger('id');

@@ -415,10 +415,117 @@ async function processTournamentMatchResult(matchId, winnerId, channel) {
     return { success: true };
 }
 
+/**
+ * Generate seeding for a competition based on the specified method.
+ * @param {number} competitionId - The competition ID
+ * @param {string} seedingType - 'registration', 'ladder', or 'random'
+ * @param {number|null} ladderId - Required if seedingType is 'ladder'
+ */
+async function generateSeeding(competitionId, seedingType, ladderId = null) {
+    // Validate competition exists and is in draft/registration status
+    const [compRows] = await execute('SELECT * FROM competitions WHERE id = ?', [competitionId]);
+    if (!compRows.length) throw new Error('Competition not found');
+    const comp = compRows[0];
+
+    if (comp.status === 'active' || comp.status === 'completed') {
+        throw new Error('Cannot generate seeding for active or completed competitions');
+    }
+
+    // Fetch all participants
+    const [participants] = await execute(
+        'SELECT * FROM tournament_participants WHERE competition_id = ? ORDER BY joined_at ASC',
+        [competitionId]
+    );
+
+    if (participants.length === 0) {
+        throw new Error('No participants registered');
+    }
+
+    let seededParticipants = [];
+
+    switch (seedingType) {
+        case 'registration':
+            // Seed by registration date (joined_at)
+            seededParticipants = participants.map((p, index) => ({
+                id: p.id,
+                seed: index + 1
+            }));
+            break;
+
+        case 'ladder':
+            // Seed by ladder standings
+            if (!ladderId) throw new Error('Ladder ID is required for ladder seeding');
+
+            // Fetch ladder standings for all participants
+            const userIds = participants.map(p => p.user_id);
+            const placeholders = userIds.map(() => '?').join(',');
+            const [standings] = await execute(
+                `SELECT user_id, elo, wins, losses 
+                 FROM ladder_standings 
+                 WHERE ladder_id = ? AND user_id IN (${placeholders})
+                 ORDER BY elo DESC, wins DESC`,
+                [ladderId, ...userIds]
+            );
+
+            // Create a map of user_id to rank
+            const rankMap = new Map();
+            standings.forEach((s, index) => {
+                rankMap.set(s.user_id, index + 1);
+            });
+
+            // Assign seeds based on ladder rank
+            seededParticipants = participants.map(p => ({
+                id: p.id,
+                seed: rankMap.get(p.user_id) || 999 // Unranked players go to the end
+            }));
+
+            // Sort by seed to ensure correct order
+            seededParticipants.sort((a, b) => a.seed - b.seed);
+
+            // Reassign seeds sequentially (in case of gaps)
+            seededParticipants = seededParticipants.map((p, index) => ({
+                id: p.id,
+                seed: index + 1
+            }));
+            break;
+
+        case 'random':
+            // Random seeding
+            const shuffled = [...participants];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            seededParticipants = shuffled.map((p, index) => ({
+                id: p.id,
+                seed: index + 1
+            }));
+            break;
+
+        default:
+            throw new Error(`Invalid seeding type: ${seedingType}`);
+    }
+
+    // Update all participants with their seeds
+    for (const p of seededParticipants) {
+        await execute(
+            'UPDATE tournament_participants SET seed = ? WHERE id = ?',
+            [p.seed, p.id]
+        );
+    }
+
+    return {
+        success: true,
+        participantCount: seededParticipants.length,
+        seedingType
+    };
+}
+
 module.exports = {
     createCompetition,
     registerParticipant,
     startCompetition,
     processTournamentMatchResult,
-    checkAndCreateThread
+    checkAndCreateThread,
+    generateSeeding
 };

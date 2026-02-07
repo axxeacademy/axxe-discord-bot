@@ -67,6 +67,23 @@ function getNextPowerOfTwo(n) {
 }
 
 /**
+ * Standard tournament seeding order calculation.
+ * For size 8, returns [1, 8, 5, 4, 3, 6, 7, 2].
+ */
+function getSeedingOrder(size) {
+    let order = [1, 2];
+    while (order.length < size) {
+        let nextOrder = [];
+        for (let seed of order) {
+            nextOrder.push(seed);
+            nextOrder.push(order.length * 2 + 1 - seed);
+        }
+        order = nextOrder;
+    }
+    return order;
+}
+
+/**
  * Start the tournament: Generate Bracket.
  */
 async function startCompetition(competitionId, channel) {
@@ -114,24 +131,33 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
     dbParticipants.forEach(p => { if (p.seed > maxSeedFound) maxSeedFound = p.seed; });
     const targetSize = getNextPowerOfTwo(Math.max(dbParticipants.length, maxSeedFound));
 
-    let participants = new Array(targetSize).fill(null).map((_, i) => ({ user_id: null, is_bye: true }));
+    // Initialize participants with BYEs
+    let participants = new Array(targetSize).fill(null).map(() => ({ user_id: null, is_bye: true }));
 
-    let unseeded = [];
+    // Create a map of seed -> participant
+    const seedMap = new Map();
     dbParticipants.forEach(p => {
-        if (p.seed && p.seed <= targetSize) {
-            participants[p.seed - 1] = { ...p, is_bye: false };
-        } else {
-            unseeded.push(p);
-        }
+        if (p.seed) seedMap.set(p.seed, p);
     });
 
-    let slotIdx = 0;
-    for (const p of unseeded) {
-        while (slotIdx < targetSize && !participants[slotIdx].is_bye) {
-            slotIdx++;
-        }
-        if (slotIdx < targetSize) {
-            participants[slotIdx] = { ...p, is_bye: false };
+    // Players without explicit seeds (though seeded logic above should have assigned them)
+    let unseeded = dbParticipants.filter(p => !p.seed);
+
+    // Calculate standard seeding order (slots positions)
+    const seedingOrder = getSeedingOrder(targetSize);
+
+    // Place players according to their seeds into the participants slots
+    // Slot i in the bracket (Match i/2) will hold seed seedingOrder[i]
+    for (let i = 0; i < targetSize; i++) {
+        const seedToPlace = seedingOrder[i];
+        const player = seedMap.get(seedToPlace);
+        if (player) {
+            participants[i] = { ...player, is_bye: false };
+        } else if (unseeded.length > 0) {
+            // Fill unseeded into the next available slot based on seed order
+            // (Alternative: match unseeded by registration order into remaining seed slots)
+            const p = unseeded.shift();
+            participants[i] = { ...p, is_bye: false };
         }
     }
 
@@ -260,20 +286,21 @@ async function generateDoubleEliminationBracket(competitionId, channel) {
             [p1Id, p2Id, matchId]
         );
 
-        // Auto-advance if BYE present
+        // Auto-advance if BYE present - CREATING THREAD AS REQUESTED
         if (!p1Id || !p2Id) {
             const winnerId = p1Id || p2Id;
             if (winnerId) {
-                // We'll process result but wait for loop to finish for batch effects
-                // Actually for initial Round 1, we CAN create threads immediately as requested by "normal BYE logic"
                 if (channel) {
-                    await checkAndCreateThread(channel, matchId, true);
+                    await checkAndCreateThread(channel, matchId);
                     await processTournamentMatchResult(matchId, winnerId, channel);
                 }
             } else if (p1.is_bye && p2.is_bye) {
                 // Double bye
                 await execute('UPDATE tournament_matches SET status = "completed" WHERE id = ?', [matchId]);
-                await processTournamentMatchResult(matchId, null, channel);
+                if (channel) {
+                    await checkAndCreateThread(channel, matchId);
+                    await processTournamentMatchResult(matchId, null, channel);
+                }
             }
         } else {
             if (channel) await checkAndCreateThread(channel, matchId);

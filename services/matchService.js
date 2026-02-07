@@ -441,32 +441,36 @@ async function createMatchThread(
 ) {
   const channel = interactionOrChannel.threads ? interactionOrChannel : interactionOrChannel.channel;
 
-  let threadTitle;
-  // [NEW] Enforce stricter logic and format edition
   const isTournament = (type === 'tournament');
 
-  if (isTournament && roundSlug) {
-    // Format edition to ensure it starts with #
-    let editionPart = '';
-    if (edition) {
-      editionPart = String(edition);
-      if (!editionPart.startsWith('#')) {
-        // Prepend # and pad if it's a short string like "3" -> "#03"?
-        // Simplest is to just prepend # if missing.
-        if (/^\d+$/.test(editionPart) && editionPart.length < 2) {
-          editionPart = `#0${editionPart}`;
-        } else if (/^\d+$/.test(editionPart)) {
-          editionPart = `#${editionPart}`;
-        } else if (!editionPart.startsWith('#')) {
-          editionPart = `${editionPart}`; // maybe it's "Cup 1"
-        }
+  // Format edition to ensure it starts with #
+  let editionPart = '';
+  if (isTournament && edition) {
+    editionPart = String(edition);
+    if (!editionPart.startsWith('#')) {
+      if (/^\d+$/.test(editionPart) && editionPart.length < 2) {
+        editionPart = `#0${editionPart}`;
+      } else {
+        editionPart = `#${editionPart}`;
       }
     }
-    const isBye = (player1Gamertag === 'BYE' || player2Gamertag === 'BYE');
-    const icon = isBye ? '✅ ' : '';
-    threadTitle = `${editionPart} | ${icon}${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`;
-  } else {
-    threadTitle = `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
+  }
+
+  const isBye = (player1Gamertag === 'BYE' || player2Gamertag === 'BYE');
+  const threadTitle = (isTournament && roundSlug)
+    ? `${editionPart} | ${isBye ? '✅ ' : ''}${roundSlug} - ${player1Gamertag} vs ${player2Gamertag}`
+    : `Match #${matchId} - ${player1Gamertag} vs ${player2Gamertag}`;
+
+  // Check permissions: Standard Discord code for Missing Access is 50001
+  if (channel.guild && !channel.permissionsFor(channel.guild.members.me).has('CreatePublicThreads')) {
+    const errorMsg = `❌ Erro de Permissão: O bot não tem permissão para criar Tópicos Públicos (CreatePublicThreads) no canal <#${channel.id}>.`;
+    console.error(`[matchService] ${errorMsg}`);
+    if (interactionOrChannel.editReply) {
+      await interactionOrChannel.editReply(errorMsg).catch(() => { });
+    } else {
+      await channel.send(errorMsg).catch(() => { });
+    }
+    throw new Error('Missing CreatePublicThreads permission');
   }
 
   const thread = await channel.threads.create({

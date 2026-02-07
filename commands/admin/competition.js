@@ -344,12 +344,19 @@ module.exports = {
                     }
                 }
 
-                const isSnowflake = (str) => /^\d{17,20}$/.test(str);
-                const targetChannelId = isSnowflake(channelId) ? channelId : interaction.channelId;
-                const targetChannel = await interaction.guild.channels.fetch(targetChannelId);
+                // Count registered participants
+                const [countResult] = await execute(
+                    'SELECT COUNT(*) as count FROM tournament_participants WHERE competition_id = ?',
+                    [compId]
+                );
+                const registeredCount = countResult[0].count;
 
-                await tournamentService.startCompetition(compId, targetChannel);
-                return interaction.editReply(`✅ Script #${scriptId} executado! Competição #${compId} iniciada em ${targetChannel}.`);
+                return interaction.editReply(
+                    `✅ Script #${scriptId} executado!\n\n` +
+                    `**Competição**: #${compId}\n` +
+                    `**Participantes registados**: ${registeredCount}\n\n` +
+                    `Use \`/competition bracket\` para gerar o seeding e depois \`/competition start\` para iniciar.`
+                );
             }
 
         } catch (error) {

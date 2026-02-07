@@ -1,29 +1,38 @@
-// commands/admin/tournament.js
+// commands/admin/competition.js
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const tournamentService = require('../../services/tournamentService');
-const { getLadderIdByChannel } = require('../../utils/ladderChannelMapping');
+const { execute } = require('../../utils/db');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('tournament')
+        .setName('competition')
         .setDescription('Gerir torneios e competições')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(sub =>
             sub
                 .setName('create')
                 .setDescription('Criar uma nova competição')
-                .addStringOption(option => option.setName('name').setDescription('Nome do torneio').setRequired(true))
+                .addStringOption(option => option.setName('name').setDescription('Nome da competição').setRequired(true))
                 .addStringOption(option => option.setName('slug').setDescription('Slug único (ex: cup-2025)').setRequired(true))
                 .addStringOption(option =>
-                    option.setName('format')
-                        .setDescription('Formato')
+                    option.setName('type')
+                        .setDescription('Tipo de competição')
                         .setRequired(true)
-                        .addChoices(
-                            { name: 'Double Elimination', value: 'double_elimination' },
-                            { name: 'Single Elimination', value: 'single_elimination' }
-                        )
+                        .setAutocomplete(true)
+                )
+                .addStringOption(option =>
+                    option.setName('format')
+                        .setDescription('Formato da competição')
+                        .setRequired(true)
+                        .setAutocomplete(true)
                 )
                 .addStringOption(option => option.setName('edition').setDescription('Edição (ex: #03)').setRequired(false))
+                .addStringOption(option =>
+                    option.setName('season')
+                        .setDescription('Temporada (ex: 24/25)')
+                        .setRequired(false)
+                        .setAutocomplete(true)
+                )
                 .addStringOption(option => option.setName('start_date').setDescription('Data de início (YYYY-MM-DD)').setRequired(false))
                 .addStringOption(option => option.setName('start_time').setDescription('Hora de início (HH:MM)').setRequired(false))
         )
@@ -54,6 +63,34 @@ module.exports = {
                 .addIntegerOption(option => option.setName('competition_id').setDescription('ID da competição (Opcional - para re-executar)').setRequired(false))
         ),
 
+    async autocomplete(interaction) {
+        const focusedOption = interaction.options.getFocused(true);
+        let choices = [];
+
+        if (focusedOption.name === 'type') {
+            choices = [
+                { name: 'Ladder', value: 'ladder' },
+                { name: 'Tournament', value: 'tournament' },
+                { name: 'League', value: 'league' }
+            ];
+        } else if (focusedOption.name === 'format') {
+            choices = [
+                { name: 'Double Elimination', value: 'double_elimination' },
+                { name: 'Single Elimination', value: 'single_elimination' },
+                { name: 'Swiss', value: 'swiss' },
+                { name: 'Round Robin', value: 'round_robin' }
+            ];
+        } else if (focusedOption.name === 'season') {
+            const [rows] = await execute('SELECT id, name, slug FROM seasons ORDER BY created_at DESC LIMIT 10');
+            choices = rows.map(r => ({ name: r.name || r.slug, value: String(r.id) }));
+        }
+
+        const filtered = choices.filter(choice =>
+            choice.name.toLowerCase().includes(focusedOption.value.toLowerCase())
+        );
+        await interaction.respond(filtered.slice(0, 25));
+    },
+
     async execute(interaction) {
         if (!interaction.deferred && !interaction.replied) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -65,12 +102,31 @@ module.exports = {
             if (subcommand === 'create') {
                 const name = interaction.options.getString('name');
                 const slug = interaction.options.getString('slug');
+                const type = interaction.options.getString('type');
                 const format = interaction.options.getString('format');
                 const edition = interaction.options.getString('edition') || null;
+                const seasonIdString = interaction.options.getString('season');
                 const startDate = interaction.options.getString('start_date') || null;
                 const startTime = interaction.options.getString('start_time') || null;
 
-                const id = await tournamentService.createCompetition(name, slug, 'tournament', format, { created_by: interaction.user.id }, edition, startDate, startTime);
+                const seasonId = seasonIdString ? parseInt(seasonIdString) : null;
+
+                // Call createCompetition with the new parameters
+                const id = await tournamentService.createCompetition(
+                    name,
+                    slug,
+                    type,
+                    format,
+                    { created_by: interaction.user.id },
+                    edition,
+                    startDate,
+                    startTime
+                );
+
+                // If seasonId was provided specifically, we need to update it because createCompetition defaults to active one
+                if (seasonId) {
+                    await execute('UPDATE competitions SET season_id = ? WHERE id = ?', [seasonId, id]);
+                }
 
                 return interaction.editReply(`✅ Competição "${name}" criada com ID: **${id}**${edition ? ` (Edição ${edition})` : ''}${startDate ? ` agendada para ${startDate}` : ''}`);
 
@@ -78,15 +134,11 @@ module.exports = {
                 const compId = interaction.options.getInteger('competition_id');
                 const user = interaction.options.getUser('user');
 
-                // Need to ensure user exists in our DB 'users' table first? 
-                const db = require('../../utils/db');
-                const [rows] = await db.execute('SELECT id FROM users WHERE discord_id = ?', [user.id]);
-
+                const [rows] = await execute('SELECT id FROM users WHERE discord_id = ?', [user.id]);
                 if (!rows.length) {
-                    // Create if missing (lazy reg)
-                    await db.execute('INSERT INTO users (discord_id, username) VALUES (?, ?)', [user.id, user.username]);
+                    await execute('INSERT INTO users (discord_id, username) VALUES (?, ?)', [user.id, user.username]);
                 }
-                const [rows2] = await db.execute('SELECT id FROM users WHERE discord_id = ?', [user.id]);
+                const [rows2] = await execute('SELECT id FROM users WHERE discord_id = ?', [user.id]);
                 const dbUserId = rows2[0].id;
 
                 await tournamentService.registerParticipant(compId, dbUserId);
@@ -94,20 +146,16 @@ module.exports = {
 
             } else if (subcommand === 'start') {
                 const compId = interaction.options.getInteger('competition_id');
-                // Pass interaction.channel so the service can create threads here!
                 await tournamentService.startCompetition(compId, interaction.channel);
-                return interaction.editReply(`🚀 Torneio #${compId} iniciado! A bracket foi gerada.`);
+                return interaction.editReply(`🚀 Competição #${compId} iniciada! A bracket foi gerada.`);
 
             } else if (subcommand === 'status') {
                 const compId = interaction.options.getInteger('competition_id');
-
-                // Fetch basic info
-                const [compRows] = await require('../../utils/db').execute('SELECT * FROM competitions WHERE id = ?', [compId]);
+                const [compRows] = await execute('SELECT * FROM competitions WHERE id = ?', [compId]);
                 if (!compRows.length) return interaction.editReply('❌ Competição não encontrada.');
                 const comp = compRows[0];
 
-                // Fetch matches
-                const [matches] = await require('../../utils/db').execute(
+                const [matches] = await execute(
                     `SELECT tm.*, 
                             COALESCE(u1.gamertag, u1.username) as p1name, 
                             COALESCE(u2.gamertag, u2.username) as p2name 
@@ -121,20 +169,10 @@ module.exports = {
 
                 if (!matches.length) return interaction.editReply(`ℹ️ A competição está em estado: **${comp.status}**, mas não há jogos gerados.`);
 
-                // Build Summary
                 let statusMsg = `**🏆 ${comp.name}** (Estado: ${comp.status})\n\n`;
-
-                // Group by rounds
                 const rounds = {};
                 matches.forEach(m => {
-                    let rName = '';
-                    if (m.round_slug) {
-                        rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round_slug}`;
-                    } else {
-                        // Fallback
-                        rName = (m.bracket_side === 'grand_final') ? 'Grand Final' : `Round ${m.round} (${m.bracket_side === 'losers' ? 'Losers' : 'Winners'})`;
-                    }
-
+                    let rName = m.round_slug ? (m.bracket_side === 'grand_final' ? 'Grand Final' : `Round ${m.round_slug}`) : `Round ${m.round} (${m.bracket_side})`;
                     if (!rounds[rName]) rounds[rName] = [];
                     rounds[rName].push(m);
                 });
@@ -142,44 +180,31 @@ module.exports = {
                 for (const [rName, ms] of Object.entries(rounds)) {
                     statusMsg += `__${rName}__\n`;
                     ms.forEach(m => {
-                        const p1 = m.p1name || 'BYE'; // Map null to BYE if status implies? Or just null.
+                        const p1 = m.p1name || 'BYE';
                         const p2 = m.p2name || 'BYE';
-                        const score = (m.status === 'completed' || m.status === 'pending_confirmation')
-                            ? `**${m.player1_score} - ${m.player2_score}**`
-                            : 'vs';
-
-                        let icon = '📅';
-                        if (m.status === 'completed') icon = '✅';
-                        else if (m.status === 'pending_confirmation') icon = '⏳';
-                        else if (m.status === 'scheduled') icon = '📅';
-
+                        const score = (m.status === 'completed' || m.status === 'pending_confirmation') ? `**${m.player1_score} - ${m.player2_score}**` : 'vs';
+                        let icon = m.status === 'completed' ? '✅' : (m.status === 'pending_confirmation' ? '⏳' : '📅');
                         statusMsg += `\`#${m.id}\` ${icon} ${p1} ${score} ${p2}\n`;
                     });
                     statusMsg += '\n';
                 }
-
                 if (statusMsg.length > 2000) statusMsg = statusMsg.substring(0, 1990) + '...';
-
                 return interaction.editReply(statusMsg);
 
             } else if (subcommand === 'script') {
                 const scriptId = interaction.options.getInteger('id');
                 const existingCompId = interaction.options.getInteger('competition_id');
-                const db = require('../../utils/db');
 
-                // 1. Fetch Script
-                const [rows] = await db.execute('SELECT * FROM tournament_scripts WHERE id = ?', [scriptId]);
+                const [rows] = await execute('SELECT * FROM tournament_scripts WHERE id = ?', [scriptId]);
                 if (!rows.length) return interaction.editReply('❌ Script não encontrado.');
                 const script = rows[0];
 
-                const participants = script.participants; // JSON column
+                const participants = script.participants;
                 const participantList = (typeof participants === 'string') ? JSON.parse(participants) : participants;
                 const channelId = script.channel_id;
-                const edition = script.edition; // PULL EDITION FROM SCRIPT
+                const edition = script.edition;
 
                 let compId = existingCompId;
-
-                // 2. Create Competition if not provided
                 if (!compId) {
                     const name = `Battlefy Rep #${scriptId}`;
                     const slug = `battlefy-${scriptId}-${Date.now()}`;
@@ -193,35 +218,20 @@ module.exports = {
                     );
                 }
 
-                await interaction.editReply(`ℹ️ Competição criada (#${compId}). A registar ${participantList.length} participantes...`);
-
-                // 3. Register Participants
-                // We need to ensure Users exist in DB. 
-                // For this script, we might be using dummy users or real discord IDs if matched?
-                // The prompt says "get all the info from a certain tournament...". 
-                // If they are real users, we need their Discord IDs.
-                // If the script just has names (Strings), we might need to create dummy users?
-                // `tournamentService.registerParticipant` requires a user_id (DB ID).
-
-                // Assume the script provides strings (names). We will create dummy users or find them.
-                // If the input is just ["Name1", "Name2"], we can't map to Discord IDs effectively without more info.
-                // However, the user said "participants list". 
-                // Let's assume we create dummy users for verification purposes if they don't exist by name.
+                await interaction.editReply(`ℹ️ Competição #**${compId}** em curso. A registar ${participantList.length} participantes...`);
 
                 let currentSeed = 1;
                 for (let pName of participantList) {
                     const seed = currentSeed++;
-                    if (!pName || pName === 'BYE') continue; // Gap in seeds will be a BYE
+                    if (!pName || pName === 'BYE') continue;
 
-                    // Create/Find Dummy User
                     let userId;
-                    const [uRows] = await db.execute('SELECT id FROM users WHERE username = ?', [pName]);
+                    const [uRows] = await execute('SELECT id FROM users WHERE username = ?', [pName]);
                     if (uRows.length) {
                         userId = uRows[0].id;
                     } else {
-                        // Create dummy
                         const fakeDid = `dummy-${Date.now()}-${Math.random()}`;
-                        const [ins] = await db.execute('INSERT INTO users (discord_id, username, is_in_server) VALUES (?, ?, 0)', [fakeDid, pName]);
+                        const [ins] = await execute('INSERT INTO users (discord_id, username, is_in_server) VALUES (?, ?, 0)', [fakeDid, pName]);
                         userId = ins.insertId;
                     }
 
@@ -232,19 +242,16 @@ module.exports = {
                     }
                 }
 
-                // 4. Start
-                // Use the channel from script if it's a valid snowflake, else fallback to interaction channel
                 const isSnowflake = (str) => /^\d{17,20}$/.test(str);
                 const targetChannelId = isSnowflake(channelId) ? channelId : interaction.channelId;
                 const targetChannel = await interaction.guild.channels.fetch(targetChannelId);
 
                 await tournamentService.startCompetition(compId, targetChannel);
-
-                return interaction.editReply(`✅ Script #${scriptId} executado! Torneio #${compId} iniciado no canal ${targetChannel}.`);
+                return interaction.editReply(`✅ Script #${scriptId} executado! Competição #${compId} iniciada em ${targetChannel}.`);
             }
 
         } catch (error) {
-            console.error('Tournament command error:', error);
+            console.error('Competition command error:', error);
             return interaction.editReply(`❌ Erro: ${error.message}`);
         }
     }

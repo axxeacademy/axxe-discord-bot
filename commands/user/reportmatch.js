@@ -256,7 +256,7 @@ module.exports = {
 
       await logCommand(
         interaction,
-        `${reporterTag} reported match ${finalMatchId}: ${score1}-${score2}`,
+        `${reporterTag} reported match ${finalMatchId}: ${s1}-${s2}`,
         { threadId: interaction.channel.id, threadName: interaction.channel.name }
       );
 
